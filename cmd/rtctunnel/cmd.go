@@ -9,12 +9,12 @@ import (
 )
 
 var (
+	options struct {
+		configFile string
+	}
 	rootCmd = &cobra.Command{
 		Use:   "rtctunnel",
 		Short: "RTCTunnel creates network tunnels over WebRTC",
-	}
-	options struct {
-		configFile string
 	}
 )
 
