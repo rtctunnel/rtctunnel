@@ -3,10 +3,11 @@ package signal
 import (
 	"time"
 
-	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/mr-tron/base58"
+	"github.com/rtctunnel/rtctunnel/crypt"
 )
 
+// A Channel facilitates signaling.
 type Channel interface {
 	Send(key, data string) error
 	Recv(key string) (data string, err error)
@@ -21,18 +22,21 @@ type config struct {
 func defaultConfig() *config {
 	return &config{
 		period:  time.Second * 30,
-		channel: NewOperatorChannel("localhost:9451"),
+		channel: NewOperatorChannel("https://operator.rtctunnel.com"),
 	}
 }
 
+// An Option customizes the config.
 type Option func(cfg *config)
 
+// WithChannel sets the channel option.
 func WithChannel(channel Channel) Option {
 	return func(cfg *config) {
 		cfg.channel = channel
 	}
 }
 
+// Send sends a message to a peer. Messages are encrypted and authenticated.
 func Send(keypair crypt.KeyPair, peerPublicKey crypt.Key, data []byte, options ...Option) error {
 	cfg := defaultConfig()
 	for _, o := range options {
@@ -44,6 +48,7 @@ func Send(keypair crypt.KeyPair, peerPublicKey crypt.Key, data []byte, options .
 	return cfg.channel.Send(address, encoded)
 }
 
+// Recv receives a message from a peer. Messages are encrypted and authenticated.
 func Recv(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...Option) (data []byte, err error) {
 	cfg := defaultConfig()
 	for _, o := range options {
