@@ -15,3 +15,5 @@
 
 # node
 node_modules/
+
+bin/
