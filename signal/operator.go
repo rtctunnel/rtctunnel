@@ -22,6 +22,7 @@ func NewOperatorChannel(url string) *OperatorChannel {
 // Recv receives a message at the given key.
 func (c *OperatorChannel) Recv(key string) (data string, err error) {
 	log.WithFields(log.Fields{
+		"url": c.url,
 		"key": key,
 	}).Info("[operator] receive")
 
@@ -60,6 +61,7 @@ func (c *OperatorChannel) Recv(key string) (data string, err error) {
 // Send sends a message to the given key with the given data.
 func (c *OperatorChannel) Send(key, data string) error {
 	log.WithFields(log.Fields{
+		"url":  c.url,
 		"key":  key,
 		"data": data,
 	}).Info("[operator] send")
