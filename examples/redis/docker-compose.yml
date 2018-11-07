@@ -1,0 +1,8 @@
+version: "3"
+services:
+  server:
+    build: .
+    command: /bin/server.sh
+  client:
+    build: .
+    command: /bin/client.sh
