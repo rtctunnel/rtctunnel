@@ -8,16 +8,22 @@ import (
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/rtctunnel/rtctunnel/crypt"
+	"github.com/rtctunnel/rtctunnel/ext/js/localstorage"
 	"github.com/rtctunnel/rtctunnel/peer"
+)
+
+const (
+	localStorageKeypairKey = "rtctunnel/examples/browser-http/server/keypair"
+	localStoragePeerKey    = "rtctunnel/examples/browser-http/server/peerpublickey"
 )
 
 var keypair crypt.KeyPair
 
 func main() {
-	saved := localStorageGet("keypair")
+	saved := localstorage.Get(localStorageKeypairKey)
 	if saved == "" {
 		keypair = crypt.GenerateKeyPair()
-		js.Global.Get("localStorage").Call("setItem", "keypair", keypair.Private.String()+"|"+keypair.Public.String())
+		localstorage.Set(localStorageKeypairKey, keypair.Private.String()+"|"+keypair.Public.String())
 	} else {
 		private, err := crypt.NewKey(strings.Split(saved, "|")[0])
 		if err != nil {
@@ -48,7 +54,7 @@ func onload() {
 	input := doc.Call("createElement", "input")
 	input.Set("id", "peerPublicKey")
 	input.Set("type", "text")
-	input.Set("value", localStorageGet("peerpublickey"))
+	input.Set("value", localstorage.Get(localStoragePeerKey))
 	label.Call("appendChild", doc.Call("createTextNode", " "))
 	label.Call("appendChild", input)
 	form.Call("appendChild", label)
@@ -71,7 +77,7 @@ func onsubmitpeerkey(evt *js.Object) {
 		js.Global.Call("alert", err.Error())
 		return
 	}
-	js.Global.Get("localStorage").Call("setItem", "peerpublickey", peerPublicKey.String())
+	localstorage.Set(localStoragePeerKey, peerPublicKey.String())
 
 	doc := js.Global.Get("document")
 	body := doc.Call("getElementsByTagName", "body").Index(0)
@@ -84,14 +90,6 @@ func onsubmitpeerkey(evt *js.Object) {
 	body.Call("appendChild", p)
 
 	go openConnection(peerPublicKey)
-}
-
-func localStorageGet(key string) string {
-	res := js.Global.Get("localStorage").Call("getItem", key)
-	if res.Bool() {
-		return res.String()
-	}
-	return ""
 }
 
 func openConnection(peerPublicKey crypt.Key) {
