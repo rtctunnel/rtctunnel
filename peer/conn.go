@@ -6,22 +6,20 @@ import (
 	"net"
 	"time"
 
-	"github.com/rtctunnel/rtctunnel/crypt"
-	"github.com/rtctunnel/rtctunnel/signal"
 	"github.com/apex/log"
 	"github.com/hashicorp/yamux"
-	"github.com/pions/webrtc"
-	"github.com/pions/webrtc/pkg/datachannel"
-	"github.com/pions/webrtc/pkg/ice"
 	"github.com/pkg/errors"
+	"github.com/rtctunnel/rtctunnel/crypt"
+	"github.com/rtctunnel/rtctunnel/signal"
 )
 
+// Conn wraps an RTCPeerConnection so connections can be made and accepted.
 type Conn struct {
 	keypair       crypt.KeyPair
 	peerPublicKey crypt.Key
 
-	pc   *webrtc.RTCPeerConnection
-	dc   *webrtc.RTCDataChannel
+	pc   RTCPeerConnection
+	dc   RTCDataChannel
 	sess *yamux.Session
 }
 
@@ -29,14 +27,14 @@ type Conn struct {
 func (conn *Conn) Accept() (stream net.Conn, port int, err error) {
 	stream, err = conn.sess.Accept()
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "failed to accept yamux stream")
+		return nil, 0, errors.New("failed to accept yamux stream")
 	}
 
 	var portData [8]byte
 	_, err = io.ReadFull(stream, portData[:])
 	if err != nil {
 		stream.Close()
-		return nil, 0, errors.Wrapf(err, "failed to read port from yamux stream")
+		return nil, 0, errors.New("failed to read port from yamux stream")
 	}
 
 	port = int(binary.BigEndian.Uint64(portData[:]))
@@ -85,19 +83,7 @@ func (conn *Conn) Close() error {
 	return err
 }
 
-func (conn *Conn) onDataChannelMessage(payload datachannel.Payload) {
-	log.WithField("peer", conn.peerPublicKey).
-		WithField("datachannel", conn.dc.Label).
-		WithField("payload", payload).
-		Info("datachannel message")
-}
-
-func (conn *Conn) onDataChannelOpen() {
-	log.WithField("peer", conn.peerPublicKey).
-		WithField("datachannel", conn.dc.Label).
-		Info("datachannel open")
-}
-
+// Open opens a new Connection.
 func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 	conn := &Conn{
 		keypair:       keypair,
@@ -108,46 +94,38 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 		Info("creating webrtc peer connection")
 
 	var err error
-	conn.pc, err = webrtc.New(webrtc.RTCConfiguration{
-		IceServers: []webrtc.RTCIceServer{{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		}},
-	})
+	conn.pc, err = NewRTCPeerConnection()
 	if err != nil {
 		conn.Close()
 		return nil, errors.Wrapf(err, "failed to create webrtc peer connection")
 	}
 	connectionReady := make(chan struct{})
-	conn.pc.OnICEConnectionStateChange = func(state ice.ConnectionState) {
+	conn.pc.OnICEConnectionStateChange(func(state string) {
 		log.WithField("peer", conn.peerPublicKey).
 			WithField("state", state).
 			Info("ice state change")
-		if state == ice.ConnectionStateConnected {
+		if state == "connected" {
 			close(connectionReady)
 		}
-	}
+	})
 
 	if keypair.Public.String() < peerPublicKey.String() {
-		conn.dc, err = conn.pc.CreateDataChannel("yamux", nil)
+		conn.dc, err = conn.pc.CreateDataChannel("yamux")
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrapf(err, "failed to create datachannel")
 		}
-		conn.dc.Lock()
-		conn.dc.Onmessage = conn.onDataChannelMessage
-		conn.dc.OnOpen = conn.onDataChannelOpen
-		conn.dc.Unlock()
 
 		// we create the offer
-		offer, err := conn.pc.CreateOffer(nil)
+		offer, err := conn.pc.CreateOffer()
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to create webrtc offer")
 		}
 
-		log.WithField("sdp", offer.Sdp).Info("sending offer")
+		log.WithField("sdp", offer).Info("sending offer")
 
-		err = signal.Send(keypair, peerPublicKey, []byte(offer.Sdp))
+		err = signal.Send(keypair, peerPublicKey, []byte(offer))
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to send webrtc offer")
@@ -162,16 +140,13 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 
 		log.WithField("sdp", answerSDP).Info("received answer")
 
-		err = conn.pc.SetRemoteDescription(webrtc.RTCSessionDescription{
-			Type: webrtc.RTCSdpTypeAnswer,
-			Sdp:  answerSDP,
-		})
+		err = conn.pc.SetAnswer(answerSDP)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to set webrtc answer")
 		}
 
-		dcconn, err := WrapDataChannel(conn.pc, conn.dc)
+		dcconn, err := WrapDataChannel(conn.dc)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to create datachannel connection wrapper")
@@ -183,12 +158,10 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 			return nil, errors.Wrap(err, "failed to create yamux server")
 		}
 	} else {
-		pending := make(chan *webrtc.RTCDataChannel, 1)
-		conn.pc.OnDataChannel = func(dc *webrtc.RTCDataChannel) {
-			if dc.Label == "yamux" {
-				pending <- dc
-			}
-		}
+		pending := make(chan RTCDataChannel, 1)
+		conn.pc.OnDataChannel(func(dc RTCDataChannel) {
+			pending <- dc
+		})
 
 		offerSDPBytes, err := signal.Recv(keypair, peerPublicKey)
 		if err != nil {
@@ -199,24 +172,21 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 
 		log.WithField("sdp", offerSDP).Info("received offer")
 
-		err = conn.pc.SetRemoteDescription(webrtc.RTCSessionDescription{
-			Type: webrtc.RTCSdpTypeOffer,
-			Sdp:  offerSDP,
-		})
+		err = conn.pc.SetOffer(offerSDP)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to set webrtc offer")
 		}
 
-		answer, err := conn.pc.CreateAnswer(nil)
+		answer, err := conn.pc.CreateAnswer()
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to create webrtc answer")
 		}
 
-		log.WithField("sdp", answer.Sdp).Info("sending answer")
+		log.WithField("sdp", answer).Info("sending answer")
 
-		err = signal.Send(keypair, peerPublicKey, []byte(answer.Sdp))
+		err = signal.Send(keypair, peerPublicKey, []byte(answer))
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to send webrtc answer")
@@ -229,7 +199,7 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 		case conn.dc = <-pending:
 		}
 
-		dcconn, err := WrapDataChannel(conn.pc, conn.dc)
+		dcconn, err := WrapDataChannel(conn.dc)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to create datachannel connection wrapper")

@@ -14,13 +14,16 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ddollar/forego v0.16.1 // indirect
 	github.com/fatih/color v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.4.7 // indirect
 	github.com/gogo/protobuf v1.1.1 // indirect
+	github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e
 	github.com/gorilla/websocket v1.4.0
 	github.com/gxed/hashland v0.0.0-20180221191214-d9f6b97f8db2 // indirect
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
 	github.com/ipfs/go-ipfs-api v1.3.5
 	github.com/ipfs/go-ipfs-cmdkit v1.1.3 // indirect
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
+	github.com/kisielk/gotool v1.0.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.2.0 // indirect
 	github.com/libp2p/go-libp2p-crypto v2.0.1+incompatible // indirect
 	github.com/libp2p/go-libp2p-metrics v2.1.7+incompatible // indirect
@@ -36,12 +39,15 @@ require (
 	github.com/multiformats/go-multiaddr v1.3.0 // indirect
 	github.com/multiformats/go-multiaddr-net v1.6.3 // indirect
 	github.com/multiformats/go-multihash v1.0.8 // indirect
+	github.com/neelance/astrewrite v0.0.0-20160511093645-99348263ae86 // indirect
+	github.com/neelance/sourcemap v0.0.0-20151028013722-8c68805598ab // indirect
 	github.com/pions/pkg v0.0.0-20180811084944-7c593763038f // indirect
 	github.com/pions/webrtc v1.1.0
 	github.com/pkg/errors v0.8.0
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/rogpeppe/rog-go v0.0.0-20150110162453-f57ad5e24ab7 // indirect
+	github.com/shurcooL/httpfs v0.0.0-20171119174359-809beceb2371 // indirect
 	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72 // indirect
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.3 // indirect
