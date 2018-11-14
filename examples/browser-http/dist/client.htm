@@ -5,6 +5,37 @@
     <title>Client</title>
 </head>
 <body>
+<pre>
+
+
+func openConnection(peerPublicKey crypt.Key) {
+    conn, err := peer.Open(keypair, peerPublicKey)
+    if err != nil {
+        panic(err)
+    }
+    defer conn.Close()
+
+    client := &http.Client{
+        Transport: &http.Transport{
+            Dial: func(network, addr string) (net.Conn, error) {
+                return conn.Open(80)
+            },
+        },
+    }
+    resp, err := client.Get("http://peer/")
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    bs, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        panic(err)
+    }
+}
+
+
+</pre>
 <script src="client.js"></script>
 </body>
 </html>
