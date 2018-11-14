@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/hashicorp/yamux"
+	"github.com/xtaci/smux"
 	"github.com/pkg/errors"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/signal"
@@ -20,21 +20,21 @@ type Conn struct {
 
 	pc   RTCPeerConnection
 	dc   RTCDataChannel
-	sess *yamux.Session
+	sess *smux.Session
 }
 
 // Accept accepts a new connection over the datachannel.
 func (conn *Conn) Accept() (stream net.Conn, port int, err error) {
-	stream, err = conn.sess.Accept()
+	stream, err = conn.sess.AcceptStream()
 	if err != nil {
-		return nil, 0, errors.New("failed to accept yamux stream")
+		return nil, 0, errors.New("failed to accept smux stream")
 	}
 
 	var portData [8]byte
 	_, err = io.ReadFull(stream, portData[:])
 	if err != nil {
 		stream.Close()
-		return nil, 0, errors.New("failed to read port from yamux stream")
+		return nil, 0, errors.New("failed to read port from smux stream")
 	}
 
 	port = int(binary.BigEndian.Uint64(portData[:]))
@@ -50,7 +50,7 @@ func (conn *Conn) Accept() (stream net.Conn, port int, err error) {
 func (conn *Conn) Open(port int) (stream net.Conn, err error) {
 	stream, err = conn.sess.OpenStream()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open yamux stream")
+		return nil, errors.Wrapf(err, "failed to open smux stream")
 	}
 
 	var portData [8]byte
@@ -59,7 +59,7 @@ func (conn *Conn) Open(port int) (stream net.Conn, err error) {
 	_, err = stream.Write(portData[:])
 	if err != nil {
 		stream.Close()
-		return nil, errors.Wrapf(err, "failed to write port to yamux stream")
+		return nil, errors.Wrapf(err, "failed to write port to smux stream")
 	}
 
 	log.WithField("peer", conn.peerPublicKey).
@@ -110,7 +110,7 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 	})
 
 	if keypair.Public.String() < peerPublicKey.String() {
-		conn.dc, err = conn.pc.CreateDataChannel("yamux")
+		conn.dc, err = conn.pc.CreateDataChannel("mux")
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrapf(err, "failed to create datachannel")
@@ -152,10 +152,10 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 			return nil, errors.Wrap(err, "failed to create datachannel connection wrapper")
 		}
 
-		conn.sess, err = yamux.Server(dcconn, yamux.DefaultConfig())
+		conn.sess, err = smux.Server(dcconn, nil)
 		if err != nil {
 			conn.Close()
-			return nil, errors.Wrap(err, "failed to create yamux server")
+			return nil, errors.Wrap(err, "failed to create smux server")
 		}
 	} else {
 		pending := make(chan RTCDataChannel, 1)
@@ -205,10 +205,10 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 			return nil, errors.Wrap(err, "failed to create datachannel connection wrapper")
 		}
 
-		conn.sess, err = yamux.Client(dcconn, yamux.DefaultConfig())
+		conn.sess, err = smux.Client(dcconn, nil)
 		if err != nil {
 			conn.Close()
-			return nil, errors.Wrap(err, "failed to create yamux client")
+			return nil, errors.Wrap(err, "failed to create smux client")
 		}
 	}
 
