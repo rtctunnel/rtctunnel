@@ -44,7 +44,7 @@ rtctunnel add-route \
     --remote-port=6379
 ```
 
-Where the `CLIENT_KEY` and `SERVER_KEY` are set to the peer keys.
+The route must be added on both peers and the `CLIENT_KEY` and `SERVER_KEY` should be set to the peer keys.
 
 Once the routes are added you can run rtctunnel with:
 
@@ -53,3 +53,5 @@ rtctunnel run
 ```
 
 Typically it would be run in the background.
+
+A docker-compose example is available in [examples/redis](https://github.com/rtctunnel/rtctunnel/tree/master/examples/redis).
