@@ -18,7 +18,7 @@ type nativeRTCDataChannel struct {
 
 func (dc nativeRTCDataChannel) OnMessage(handler func([]byte)) {
 	dc.native.Lock()
-	dc.native.Onmessage = func(payload datachannel.Payload) {
+	dc.native.OnMessage(func(payload datachannel.Payload) {
 		var data []byte
 		switch payload := payload.(type) {
 		case *datachannel.PayloadBinary:
@@ -29,15 +29,15 @@ func (dc nativeRTCDataChannel) OnMessage(handler func([]byte)) {
 			panic("unknown payload type")
 		}
 		handler(data)
-	}
+	})
 	dc.native.Unlock()
 }
 
 func (dc nativeRTCDataChannel) OnOpen(handler func()) {
 	dc.native.Lock()
-	dc.native.OnOpen = func() {
+	dc.native.OnOpen(func() {
 		handler()
-	}
+	})
 	dc.native.Unlock()
 }
 
@@ -59,17 +59,17 @@ func (pc nativeRTCPeerConnection) CreateDataChannel(label string) (RTCDataChanne
 
 func (pc nativeRTCPeerConnection) OnICEConnectionStateChange(handler func(state string)) {
 	pc.Lock()
-	pc.RTCPeerConnection.OnICEConnectionStateChange = func(state ice.ConnectionState) {
+	pc.RTCPeerConnection.OnICEConnectionStateChange(func(state ice.ConnectionState) {
 		handler(strings.ToLower(state.String()))
-	}
+	})
 	pc.Unlock()
 }
 
 func (pc nativeRTCPeerConnection) OnDataChannel(handler func(RTCDataChannel)) {
 	pc.Lock()
-	pc.RTCPeerConnection.OnDataChannel = func(dc *webrtc.RTCDataChannel) {
+	pc.RTCPeerConnection.OnDataChannel(func(dc *webrtc.RTCDataChannel) {
 		handler(nativeRTCDataChannel{dc})
-	}
+	})
 	pc.Unlock()
 }
 
