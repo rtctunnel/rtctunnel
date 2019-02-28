@@ -10,6 +10,7 @@ import (
 	"github.com/pions/webrtc"
 	"github.com/pions/webrtc/pkg/datachannel"
 	"github.com/pions/webrtc/pkg/ice"
+	"github.com/pkg/errors"
 )
 
 type nativeRTCDataChannel struct {
@@ -105,12 +106,26 @@ func (pc nativeRTCPeerConnection) SetOffer(offer string) error {
 
 func NewRTCPeerConnection() (RTCPeerConnection, error) {
 	pc, err := webrtc.New(webrtc.RTCConfiguration{
-		IceServers: []webrtc.RTCIceServer{{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		}},
+		// IceServers: []webrtc.RTCIceServer{{
+		// 	URLs: []string{
+		// 		"stun:stun.l.google.com:19302",
+		// 		"stun:stun1.l.google.com:19302",
+		// 		"stun:stun2.l.google.com:19302",
+		// 		"stun:stun3.l.google.com:19302",
+		// 		"stun:stun4.l.google.com:19302",
+		// 		"stun:stun.ekiga.net",
+		// 		"stun:stun.ideasip.com",
+		// 		"stun:stun.schlund.de",
+		// 		"stun:stun.stunprotocol.org:3478",
+		// 		"stun:stun.voiparound.com",
+		// 		"stun:stun.voipbuster.com",
+		// 		"stun:stun.voipstunt.com",
+		// 		"stun:stun.voxgratia.org",
+		// 	},
+		// }},
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "error creating peer connection")
 	}
 	return nativeRTCPeerConnection{pc}, nil
 }
