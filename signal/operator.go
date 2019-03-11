@@ -3,11 +3,18 @@ package signal
 import (
 	"errors"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/apex/log"
 )
+
+// DefaultClient is the client to use for making http requests
+var DefaultClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
 
 // An OperatorChannel signals over a custom http server.
 type OperatorChannel struct {
@@ -30,11 +37,16 @@ func (c *OperatorChannel) Recv(key string) (data string, err error) {
 		"address": {key},
 	}
 	for {
-		resp, err := http.Get(c.url + "/sub?" + uv.Encode())
+		resp, err := DefaultClient.Get(c.url + "/sub?" + uv.Encode())
 		if err != nil {
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				log.Warn("[operator] timed-out, retrying")
+				continue
+			}
 			return "", err
 		}
 		if resp.StatusCode == http.StatusGatewayTimeout {
+			log.Warn("[operator] timed-out, retrying")
 			resp.Body.Close()
 			continue
 		}
@@ -71,7 +83,7 @@ func (c *OperatorChannel) Send(key, data string) error {
 		"data":    {data},
 	}
 	for {
-		resp, err := http.Get(c.url + "/pub?" + uv.Encode())
+		resp, err := DefaultClient.PostForm(c.url+"/pub", uv)
 		if err != nil {
 			return err
 		}
@@ -80,6 +92,8 @@ func (c *OperatorChannel) Send(key, data string) error {
 			resp.Body.Close()
 			continue
 		}
+
+		log.WithField("status_code", resp.StatusCode).WithField("status", resp.Status).Info("[operator] sent")
 
 		ioutil.ReadAll(resp.Body)
 		resp.Body.Close()

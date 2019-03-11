@@ -8,50 +8,35 @@ import (
 	"strings"
 
 	"github.com/pions/webrtc"
-	"github.com/pions/webrtc/pkg/datachannel"
-	"github.com/pions/webrtc/pkg/ice"
 	"github.com/pkg/errors"
 )
 
 type nativeRTCDataChannel struct {
-	native *webrtc.RTCDataChannel
+	native *webrtc.DataChannel
 }
 
 func (dc nativeRTCDataChannel) OnMessage(handler func([]byte)) {
-	dc.native.Lock()
-	dc.native.OnMessage(func(payload datachannel.Payload) {
-		var data []byte
-		switch payload := payload.(type) {
-		case *datachannel.PayloadBinary:
-			data = payload.Data
-		case *datachannel.PayloadString:
-			data = payload.Data
-		default:
-			panic("unknown payload type")
-		}
-		handler(data)
+	dc.native.OnMessage(func(msg webrtc.DataChannelMessage) {
+		handler(msg.Data)
 	})
-	dc.native.Unlock()
 }
 
 func (dc nativeRTCDataChannel) OnOpen(handler func()) {
-	dc.native.Lock()
 	dc.native.OnOpen(func() {
 		handler()
 	})
-	dc.native.Unlock()
 }
 
 func (dc nativeRTCDataChannel) Send(data []byte) error {
-	return dc.native.Send(datachannel.PayloadBinary{Data: data})
+	return dc.native.Send(data)
 }
 
 type nativeRTCPeerConnection struct {
-	*webrtc.RTCPeerConnection
+	*webrtc.PeerConnection
 }
 
 func (pc nativeRTCPeerConnection) CreateDataChannel(label string) (RTCDataChannel, error) {
-	dc, err := pc.RTCPeerConnection.CreateDataChannel(label, nil)
+	dc, err := pc.PeerConnection.CreateDataChannel(label, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -59,70 +44,66 @@ func (pc nativeRTCPeerConnection) CreateDataChannel(label string) (RTCDataChanne
 }
 
 func (pc nativeRTCPeerConnection) OnICEConnectionStateChange(handler func(state string)) {
-	pc.Lock()
-	pc.RTCPeerConnection.OnICEConnectionStateChange(func(state ice.ConnectionState) {
+	pc.PeerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
 		handler(strings.ToLower(state.String()))
 	})
-	pc.Unlock()
 }
 
 func (pc nativeRTCPeerConnection) OnDataChannel(handler func(RTCDataChannel)) {
-	pc.Lock()
-	pc.RTCPeerConnection.OnDataChannel(func(dc *webrtc.RTCDataChannel) {
+	pc.PeerConnection.OnDataChannel(func(dc *webrtc.DataChannel) {
 		handler(nativeRTCDataChannel{dc})
 	})
-	pc.Unlock()
 }
 
 func (pc nativeRTCPeerConnection) CreateAnswer() (string, error) {
-	sdp, err := pc.RTCPeerConnection.CreateAnswer(nil)
+	sdp, err := pc.PeerConnection.CreateAnswer(nil)
 	if err != nil {
 		return "", err
 	}
-	return sdp.Sdp, nil
+	err = pc.PeerConnection.SetLocalDescription(sdp)
+	if err != nil {
+		return "", err
+	}
+	return sdp.SDP, nil
 }
 
 func (pc nativeRTCPeerConnection) CreateOffer() (string, error) {
-	sdp, err := pc.RTCPeerConnection.CreateOffer(nil)
+	sdp, err := pc.PeerConnection.CreateOffer(nil)
 	if err != nil {
 		return "", err
 	}
-	return sdp.Sdp, nil
+	err = pc.PeerConnection.SetLocalDescription(sdp)
+	if err != nil {
+		return "", err
+	}
+	return sdp.SDP, nil
 }
 
 func (pc nativeRTCPeerConnection) SetAnswer(answer string) error {
-	return pc.RTCPeerConnection.SetRemoteDescription(webrtc.RTCSessionDescription{
-		Type: webrtc.RTCSdpTypeAnswer,
-		Sdp:  answer,
+	return pc.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  answer,
 	})
 }
 
 func (pc nativeRTCPeerConnection) SetOffer(offer string) error {
-	return pc.RTCPeerConnection.SetRemoteDescription(webrtc.RTCSessionDescription{
-		Type: webrtc.RTCSdpTypeOffer,
-		Sdp:  offer,
+	return pc.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  offer,
 	})
 }
 
 func NewRTCPeerConnection() (RTCPeerConnection, error) {
-	pc, err := webrtc.New(webrtc.RTCConfiguration{
-		// IceServers: []webrtc.RTCIceServer{{
-		// 	URLs: []string{
-		// 		"stun:stun.l.google.com:19302",
-		// 		"stun:stun1.l.google.com:19302",
-		// 		"stun:stun2.l.google.com:19302",
-		// 		"stun:stun3.l.google.com:19302",
-		// 		"stun:stun4.l.google.com:19302",
-		// 		"stun:stun.ekiga.net",
-		// 		"stun:stun.ideasip.com",
-		// 		"stun:stun.schlund.de",
-		// 		"stun:stun.stunprotocol.org:3478",
-		// 		"stun:stun.voiparound.com",
-		// 		"stun:stun.voipbuster.com",
-		// 		"stun:stun.voipstunt.com",
-		// 		"stun:stun.voxgratia.org",
-		// 	},
-		// }},
+	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{{
+			URLs: []string{
+				"stun:stun.l.google.com:19302",
+				"stun:stun1.l.google.com:19302",
+				"stun:stun2.l.google.com:19302",
+				"stun:stun3.l.google.com:19302",
+				"stun:stun4.l.google.com:19302",
+			},
+		}},
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "error creating peer connection")

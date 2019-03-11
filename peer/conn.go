@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/xtaci/smux"
 	"github.com/pkg/errors"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/signal"
+	"github.com/xtaci/smux"
 )
 
 // Conn wraps an RTCPeerConnection so connections can be made and accepted.
