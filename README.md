@@ -55,3 +55,29 @@ rtctunnel run
 Typically it would be run in the background.
 
 A docker-compose example is available in [examples/redis](https://github.com/rtctunnel/rtctunnel/tree/master/examples/redis).
+
+## Configuration 
+
+Configuration is stored in a yaml file based on [github.com/kirsle/configdir](https://github.com/kirsle/configdir):
+
+```text
+Linux:   $XDG_CONFIG_HOME or "$HOME/.config"
+Windows: %APPDATA% or "C:\\Users\\%USER%\\AppData\\Roaming"
+macOS:   $HOME/Library/Application Support
+```
+
+You can see the path by running `rtctunnel help`.
+
+### Signal Channel
+
+In addition to the key pair and routes you can set the signal channel in the config:
+
+```yaml
+keypair:
+  public: xxx
+  private: xxx
+routes: []
+signalchannel: operator://localhost:8000
+```
+
+The default signal channel is `operator://operator.rtctunnel.com`, a custom signaling server whose source code can be found at [github.com/rtctunnel/operator](https://github.com/rtctunnel/operator). Currently no other signaling schemes are defined.

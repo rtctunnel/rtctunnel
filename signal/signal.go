@@ -1,46 +1,57 @@
 package signal
 
 import (
-	"time"
-
 	"github.com/mr-tron/base58"
+	"github.com/rtctunnel/rtctunnel/channels"
 	"github.com/rtctunnel/rtctunnel/crypt"
 )
 
-// A Channel facilitates signaling.
-type Channel interface {
-	Send(key, data string) error
-	Recv(key string) (data string, err error)
-}
-
 type config struct {
-	timeout time.Duration
-	period  time.Duration
-	channel Channel
+	channel channels.Channel
 }
 
-func defaultConfig() *config {
-	return &config{
-		period:  time.Second * 30,
-		channel: NewOperatorChannel("https://operator.rtctunnel.com"),
+var defaultOptions = []Option{
+	WithChannel(channels.Must(channels.Get("operator://operator.rtctunnel.com"))),
+}
+
+func getConfig(options ...Option) (*config, error) {
+	cfg := new(config)
+	for _, o := range defaultOptions {
+		err := o(cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
+	for _, o := range options {
+		err := o(cfg)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cfg, nil
 }
 
 // An Option customizes the config.
-type Option func(cfg *config)
+type Option func(cfg *config) error
 
 // WithChannel sets the channel option.
-func WithChannel(channel Channel) Option {
-	return func(cfg *config) {
-		cfg.channel = channel
+func WithChannel(ch channels.Channel) Option {
+	return func(cfg *config) error {
+		cfg.channel = ch
+		return nil
 	}
+}
+
+// SetDefaultOptions sets the default options
+func SetDefaultOptions(options ...Option) {
+	defaultOptions = options
 }
 
 // Send sends a message to a peer. Messages are encrypted and authenticated.
 func Send(keypair crypt.KeyPair, peerPublicKey crypt.Key, data []byte, options ...Option) error {
-	cfg := defaultConfig()
-	for _, o := range options {
-		o(cfg)
+	cfg, err := getConfig(options...)
+	if err != nil {
+		return err
 	}
 	encrypted := keypair.Encrypt(peerPublicKey, data)
 	address := peerPublicKey.String() + "/" + keypair.Public.String()
@@ -50,9 +61,9 @@ func Send(keypair crypt.KeyPair, peerPublicKey crypt.Key, data []byte, options .
 
 // Recv receives a message from a peer. Messages are encrypted and authenticated.
 func Recv(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...Option) (data []byte, err error) {
-	cfg := defaultConfig()
-	for _, o := range options {
-		o(cfg)
+	cfg, err := getConfig(options...)
+	if err != nil {
+		return nil, err
 	}
 	address := keypair.Public.String() + "/" + peerPublicKey.String()
 	encoded, err := cfg.channel.Recv(address)

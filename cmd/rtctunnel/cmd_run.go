@@ -6,9 +6,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/apex/log"
+	"github.com/rtctunnel/rtctunnel/channels"
+	_ "github.com/rtctunnel/rtctunnel/channels/operator"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/peer"
-	"github.com/apex/log"
+	"github.com/rtctunnel/rtctunnel/signal"
 	"github.com/spf13/cobra"
 )
 
@@ -27,10 +30,19 @@ func init() {
 			}
 
 			log.WithFields(log.Fields{
-				"config-file": options.configFile,
-				"public-key":  cfg.KeyPair.Public,
-				"routes":      cfg.Routes,
+				"config-file":    options.configFile,
+				"public-key":     cfg.KeyPair.Public,
+				"routes":         cfg.Routes,
+				"signal-channel": cfg.SignalChannel,
 			}).Info("using config")
+
+			if cfg.SignalChannel != "" {
+				ch, err := channels.Get(cfg.SignalChannel)
+				if err != nil {
+					log.WithError(err).Fatal("invalid signalchannel in yaml config")
+				}
+				signal.SetDefaultOptions(signal.WithChannel(ch))
+			}
 
 			peerConns := map[crypt.Key]*peer.Conn{}
 			for _, route := range cfg.Routes {

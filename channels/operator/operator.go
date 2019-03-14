@@ -1,4 +1,4 @@
-package signal
+package operator
 
 import (
 	"errors"
@@ -6,28 +6,41 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/apex/log"
+	"github.com/rtctunnel/rtctunnel/channels"
 )
+
+func init() {
+	channels.RegisterFactory("operator", func(addr string) (channels.Channel, error) {
+		return New(strings.Replace(addr, "operator://", "https://", 1)), nil
+	})
+}
 
 // DefaultClient is the client to use for making http requests
 var DefaultClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-// An OperatorChannel signals over a custom http server.
-type OperatorChannel struct {
+// An operatorChannel signals over a custom http server.
+type operatorChannel struct {
 	url string
 }
 
-// NewOperatorChannel creates a new OperatorChannel.
-func NewOperatorChannel(url string) *OperatorChannel {
-	return &OperatorChannel{url: url}
+// New creates a new operatorChannel.
+func New(url string) channels.Channel {
+	_, err := DefaultClient.Head(url)
+	if err != nil && strings.Contains(err.Error(), "server gave HTTP response") {
+		// switch to http
+		url = strings.Replace(url, "https://", "http://", 1)
+	}
+	return &operatorChannel{url: url}
 }
 
 // Recv receives a message at the given key.
-func (c *OperatorChannel) Recv(key string) (data string, err error) {
+func (c *operatorChannel) Recv(key string) (data string, err error) {
 	log.WithFields(log.Fields{
 		"url": c.url,
 		"key": key,
@@ -71,7 +84,7 @@ func (c *OperatorChannel) Recv(key string) (data string, err error) {
 }
 
 // Send sends a message to the given key with the given data.
-func (c *OperatorChannel) Send(key, data string) error {
+func (c *operatorChannel) Send(key, data string) error {
 	log.WithFields(log.Fields{
 		"url":  c.url,
 		"key":  key,
