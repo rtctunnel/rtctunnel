@@ -18,8 +18,9 @@ type Route struct {
 
 // A Config is the configuration for the RTCTunnel.
 type Config struct {
-	KeyPair crypt.KeyPair
-	Routes  []Route
+	KeyPair       crypt.KeyPair
+	Routes        []Route
+	SignalChannel string `yaml:"signalchannel,omitempty"`
 }
 
 // LoadConfig loads the config off of the disk.
