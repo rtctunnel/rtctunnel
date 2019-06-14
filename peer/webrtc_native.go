@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pions/webrtc"
+	webrtc "github.com/pion/webrtc/v2"
 	"github.com/pkg/errors"
 )
 
