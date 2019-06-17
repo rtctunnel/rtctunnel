@@ -3,6 +3,7 @@ package signal
 import (
 	"github.com/mr-tron/base58"
 	"github.com/rtctunnel/rtctunnel/channels"
+	_ "github.com/rtctunnel/rtctunnel/channels/operator" // for the default operator channel
 	"github.com/rtctunnel/rtctunnel/crypt"
 )
 

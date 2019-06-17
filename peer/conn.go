@@ -84,7 +84,7 @@ func (conn *Conn) Close() error {
 }
 
 // Open opens a new Connection.
-func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
+func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Option) (*Conn, error) {
 	conn := &Conn{
 		keypair:       keypair,
 		peerPublicKey: peerPublicKey,
@@ -125,13 +125,13 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 
 		log.WithField("sdp", offer).Info("sending offer")
 
-		err = signal.Send(keypair, peerPublicKey, []byte(offer))
+		err = signal.Send(keypair, peerPublicKey, []byte(offer), options...)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to send webrtc offer")
 		}
 
-		answerSDPBytes, err := signal.Recv(keypair, peerPublicKey)
+		answerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to receive webrtc answer")
@@ -163,7 +163,7 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 			pending <- dc
 		})
 
-		offerSDPBytes, err := signal.Recv(keypair, peerPublicKey)
+		offerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to receive webrtc offer")
@@ -186,7 +186,7 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key) (*Conn, error) {
 
 		log.WithField("sdp", answer).Info("sending answer")
 
-		err = signal.Send(keypair, peerPublicKey, []byte(answer))
+		err = signal.Send(keypair, peerPublicKey, []byte(answer), options...)
 		if err != nil {
 			conn.Close()
 			return nil, errors.Wrap(err, "failed to send webrtc answer")
