@@ -3,8 +3,10 @@ package signal
 import (
 	"github.com/mr-tron/base58"
 	"github.com/rtctunnel/rtctunnel/channels"
-	_ "github.com/rtctunnel/rtctunnel/channels/operator" // for the default operator channel
 	"github.com/rtctunnel/rtctunnel/crypt"
+
+	_ "github.com/rtctunnel/rtctunnel/channels/apprtc" // for the apprtc operator channel
+	_ "github.com/rtctunnel/rtctunnel/channels/operator" // for the default operator channel
 )
 
 type config struct {
@@ -12,7 +14,7 @@ type config struct {
 }
 
 var defaultOptions = []Option{
-	WithChannel(channels.Must(channels.Get("operator://operator.rtctunnel.com"))),
+	WithChannel(channels.Must(channels.Get("apprtc://"))),
 }
 
 func getConfig(options ...Option) (*config, error) {
