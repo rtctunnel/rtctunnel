@@ -1,7 +1,9 @@
 package operator
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -9,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/channels"
 )
 
@@ -40,26 +42,35 @@ func New(url string) channels.Channel {
 }
 
 // Recv receives a message at the given key.
-func (c *operatorChannel) Recv(key string) (data string, err error) {
-	log.WithFields(log.Fields{
-		"url": c.url,
-		"key": key,
-	}).Info("[operator] receive")
+func (c *operatorChannel) Recv(ctx context.Context, key string) (data string, err error) {
+	log.Info().Str("url", c.url).Str("key", key).Msg("[operator] receive")
 
 	uv := url.Values{
 		"address": {key},
 	}
 	for {
-		resp, err := DefaultClient.Get(c.url + "/sub?" + uv.Encode())
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		req, err := http.NewRequest("GET", c.url+"/sub?"+uv.Encode(), nil)
+		if err != nil {
+			return "", fmt.Errorf("error building HTTP request: %w", err)
+		}
+		req = req.WithContext(ctx)
+
+		resp, err := DefaultClient.Do(req)
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				log.Warn("[operator] timed-out, retrying")
+				log.Warn().Msg("[operator] timed-out, retrying")
 				continue
 			}
 			return "", err
 		}
 		if resp.StatusCode == http.StatusGatewayTimeout {
-			log.Warn("[operator] timed-out, retrying")
+			log.Warn().Msg("[operator] timed-out, retrying")
 			resp.Body.Close()
 			continue
 		}
@@ -74,29 +85,33 @@ func (c *operatorChannel) Recv(key string) (data string, err error) {
 			return "", err
 		}
 
-		log.WithFields(log.Fields{
-			"key":  key,
-			"data": string(bs),
-		}).Info("[operator] received")
-
 		return string(bs), nil
 	}
 }
 
 // Send sends a message to the given key with the given data.
-func (c *operatorChannel) Send(key, data string) error {
-	log.WithFields(log.Fields{
-		"url":  c.url,
-		"key":  key,
-		"data": data,
-	}).Info("[operator] send")
+func (c *operatorChannel) Send(ctx context.Context, key, data string) error {
+	log.Info().Str("url", c.url).Str("key", key).Str("data", data).Msg("[operator] send")
 
 	uv := url.Values{
 		"address": {key},
 		"data":    {data},
 	}
 	for {
-		resp, err := DefaultClient.PostForm(c.url+"/pub", uv)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		req, err := http.NewRequest("POST", c.url+"/pub", strings.NewReader(uv.Encode()))
+		if err != nil {
+			return fmt.Errorf("error building HTTP request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(ctx)
+
+		resp, err := DefaultClient.Do(req)
 		if err != nil {
 			return err
 		}
@@ -105,8 +120,6 @@ func (c *operatorChannel) Send(key, data string) error {
 			resp.Body.Close()
 			continue
 		}
-
-		log.WithField("status_code", resp.StatusCode).WithField("status", resp.Status).Info("[operator] sent")
 
 		ioutil.ReadAll(resp.Body)
 		resp.Body.Close()

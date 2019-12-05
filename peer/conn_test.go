@@ -2,57 +2,49 @@ package peer
 
 import (
 	"bufio"
-	"io"
-	"testing"
-
+	"context"
 	"github.com/rtctunnel/rtctunnel/channels"
 	"github.com/rtctunnel/rtctunnel/crypt"
-	"github.com/rtctunnel/rtctunnel/signal"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/sync/errgroup"
+	"io"
+	"sync"
+	"testing"
+	"time"
 )
 
-func TestConn(t *testing.T) {
-	ch, err := channels.Get("memory://test")
-	assert.NoError(t, err)
-	options := []signal.Option{signal.WithChannel(ch)}
+func TestNetwork_Connect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
 
-	key1 := crypt.GenerateKeyPair()
-	key2 := crypt.GenerateKeyPair()
+	k1, k2 := crypt.GenerateKeyPair(), crypt.GenerateKeyPair()
+	ch := channels.Must(channels.Get("memory://test"))
 
-	var eg errgroup.Group
-	eg.Go(func() error {
-		conn1, err := Open(key1, key2.Public, options...)
-		if err != nil {
-			return err
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+
+		n1 := NewNetwork(k1, WithChannel(ch))
+		conn, err := n1.Connect(ctx, k2.Public, 1)
+		if assert.NoError(t, err) {
+			assert.NotNil(t, conn)
+
+			_, err = io.WriteString(conn, "Hello World\n")
+			assert.NoError(t, err)
 		}
+	}()
+	go func() {
+		defer wg.Done()
 
-		conn2, port, err := conn1.Accept()
-		if err != nil {
-			return err
+		n2 := NewNetwork(k2, WithChannel(ch))
+		conn, err := n2.Connect(ctx, k1.Public, 1)
+		if assert.NoError(t, err) {
+			assert.NotNil(t, conn)
+
+			line, _, err := bufio.NewReader(conn).ReadLine()
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello World", string(line))
 		}
-		defer conn2.Close()
-
-		assert.Equal(t, 9000, port)
-		io.WriteString(conn2, "hello world\n")
-		return nil
-	})
-	eg.Go(func() error {
-		conn2, err := Open(key2, key1.Public, options...)
-		if err != nil {
-			return err
-		}
-
-		conn1, err := conn2.Open(9000)
-		if err != nil {
-			return err
-		}
-		defer conn1.Close()
-
-		s := bufio.NewScanner(conn1)
-		assert.True(t, s.Scan())
-		assert.Equal(t, "hello world", s.Text())
-		return nil
-	})
-	assert.NoError(t, eg.Wait())
+	}()
+	wg.Wait()
 }

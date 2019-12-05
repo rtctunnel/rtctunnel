@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sync"
@@ -8,8 +9,8 @@ import (
 
 // A Channel facilitates signaling.
 type Channel interface {
-	Send(key, data string) error
-	Recv(key string) (data string, err error)
+	Send(ctx context.Context, key, data string) error
+	Recv(ctx context.Context, key string) (data string, err error)
 }
 
 // A Factory returns a Channel from an address

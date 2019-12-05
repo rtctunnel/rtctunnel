@@ -1,9 +1,10 @@
 package channels
 
 import (
+	"context"
 	"sync"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 )
 
 func init() {
@@ -30,19 +31,24 @@ func newMemoryChannel(addr string) (*memoryChannel, error) {
 	return &memoryChannel{prefix: addr}, nil
 }
 
-func (mch *memoryChannel) Send(key, data string) error {
-	log.WithField("key", key).
-		WithField("data", data).
-		Info("[MemoryChannel] sending")
-	mch.getChannel(key) <- data
-	return nil
+func (mch *memoryChannel) Send(ctx context.Context, key, data string) error {
+	log.Info().Str("key", key).Str("data", data).Msg("[MemoryChannel] sending")
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case mch.getChannel(key) <- data:
+		return nil
+	}
 }
 
-func (mch *memoryChannel) Recv(key string) (data string, err error) {
-	log.WithField("key", key).
-		Info("[MemoryChannel] receiving")
-	data = <-mch.getChannel(key)
-	return data, nil
+func (mch *memoryChannel) Recv(ctx context.Context, key string) (data string, err error) {
+	log.Info().Str("key", key).Str("data", data).Msg("[MemoryChannel] receiving")
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case data = <-mch.getChannel(key):
+		return data, nil
+	}
 }
 
 func (mch *memoryChannel) getChannel(key string) chan string {
