@@ -1,17 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"time"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/channels"
 	_ "github.com/rtctunnel/rtctunnel/channels/operator"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/peer"
-	"github.com/rtctunnel/rtctunnel/signal"
 	"github.com/spf13/cobra"
 )
 
@@ -22,11 +22,11 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg, err := LoadConfig(options.configFile)
 			if err != nil {
-				log.WithError(err).Fatal("failed to load config file")
+				log.Fatal().Err(err).Msg("failed to load config file")
 			}
 
 			if !cfg.KeyPair.Private.Valid() {
-				log.WithError(err).Fatal("invalid config file, missing private key")
+				log.Fatal().Err(err).Msg("invalid config file, missing private key")
 			}
 
 			log.WithFields(log.Fields{
@@ -36,15 +36,19 @@ func init() {
 				"signal-channel": cfg.SignalChannel,
 			}).Info("using config")
 
+			var options []peer.Option
+
 			if cfg.SignalChannel != "" {
 				ch, err := channels.Get(cfg.SignalChannel)
 				if err != nil {
-					log.WithError(err).Fatal("invalid signalchannel in yaml config")
+					log.Fatal().Err(err).Msg("invalid signalchannel in yaml config")
 				}
-				signal.SetDefaultOptions(signal.WithChannel(ch))
+				options = append(options, peer.WithChannel(ch))
 			}
 
-			peerConns := map[crypt.Key]*peer.Conn{}
+			ctx := context.Background()
+			network := peer.NewNetwork(cfg.KeyPair, options...)
+
 			for _, route := range cfg.Routes {
 				var peerPublicKey crypt.Key
 				if route.LocalPeer == cfg.KeyPair.Public {
@@ -53,17 +57,11 @@ func init() {
 					peerPublicKey = route.LocalPeer
 				}
 
-				conn, ok := peerConns[peerPublicKey]
-				if !ok {
-					var err error
-					conn, err = peer.Open(cfg.KeyPair, peerPublicKey)
-					if err != nil {
-						log.WithError(err).Fatal("failed to open peer connection")
-					}
-					peerConns[peerPublicKey] = conn
-
-					go acceptRemote(cfg, conn)
+				conn, err := network.Connect(ctx, peerPublicKey, route.)
+				if err != nil {
+					log.Fatal().Err(err).Msg("failed to establish connection to peer")
 				}
+				go acceptRemote(cfg, conn)
 
 				if route.LocalPeer == cfg.KeyPair.Public {
 					go localListener(conn, route)
@@ -80,7 +78,7 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 	for {
 		remote, port, err := pc.Accept()
 		if err != nil {
-			log.WithError(err).Fatal("failed to accept remote connection")
+			log.Fatal().Err(err).Msg("failed to accept remote connection")
 		}
 
 		allowed := false
@@ -99,7 +97,7 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 
 		local, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
 		if err != nil {
-			log.WithError(err).Warn("failed to establish connection to local port")
+			log.Error().Err(err).Msg("failed to establish connection to local port")
 			remote.Close()
 			continue
 		}
@@ -108,12 +106,12 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 	}
 }
 
-func localListener(pc *peer.Conn, route Route) {
-	log.WithField("route", route).Info("starting local listener")
+func localListener(network *peer.Network, route Route) {
+	log.Info().Interface("route", route).Msg("starting local listener")
 
 	li, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(route.LocalPort)))
 	if err != nil {
-		log.WithError(err).Fatal("failed to create listener")
+		log.Fatal().Err(err).Msg("failed to create listener")
 	}
 	defer li.Close()
 
@@ -124,13 +122,18 @@ func localListener(pc *peer.Conn, route Route) {
 				time.Sleep(time.Second)
 				continue
 			}
-			log.WithError(err).Fatal("error accepting connection")
+			log.Fatal().Err(err).Msg("error accepting connection")
+		}
+
+		remote, err := network.Connect(context.TODO(), route.RemotePeer, route.RemotePort)
+		if err != nil {
+
 		}
 
 		remote, err := pc.Open(route.RemotePort)
 		if err != nil {
 			local.Close()
-			log.WithError(err).Warn("failed to create data channel")
+			log.Error().Err(err).Msg("failed to create data channel")
 			continue
 		}
 
@@ -153,6 +156,6 @@ func joinConns(c1, c2 net.Conn) {
 	}()
 	err := <-errc
 	if err != nil {
-		log.WithError(err).Warn("error copying data between connections")
+		log.Error().Err(err).Msg("error copying data between connections")
 	}
 }
