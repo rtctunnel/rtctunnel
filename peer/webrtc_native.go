@@ -4,7 +4,6 @@ package peer
 
 import (
 	"io"
-	"os"
 	"strings"
 
 	webrtc "github.com/pion/webrtc/v2"
@@ -13,6 +12,14 @@ import (
 
 type nativeRTCDataChannel struct {
 	native *webrtc.DataChannel
+}
+
+func (dc nativeRTCDataChannel) Close() error {
+	return dc.native.Close()
+}
+
+func (dc nativeRTCDataChannel) OnClose(handler func()) {
+	dc.native.OnClose(handler)
 }
 
 func (dc nativeRTCDataChannel) OnMessage(handler func([]byte)) {
@@ -111,6 +118,6 @@ func NewRTCPeerConnection() (RTCPeerConnection, error) {
 	return nativeRTCPeerConnection{pc}, nil
 }
 
-func Pipe() (io.ReadCloser, io.WriteCloser, error) {
-	return os.Pipe()
+func Pipe() (io.ReadCloser, io.WriteCloser) {
+	return io.Pipe()
 }

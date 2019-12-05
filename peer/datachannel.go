@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"io"
 	"net"
 	"time"
@@ -22,6 +23,11 @@ func (addr dataChannelAddr) String() string {
 type DataChannel struct {
 	dc RTCDataChannel
 	rr io.ReadCloser
+	rw io.WriteCloser
+
+	openCond  *Cond
+	closeCond *Cond
+	closeErr  error
 }
 
 var _ net.Conn = (*DataChannel)(nil)
@@ -29,15 +35,24 @@ var _ net.Conn = (*DataChannel)(nil)
 // WrapDataChannel wraps an rtc data channel and implements the net.Conn
 // interface
 func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
-	rr, rw, err := Pipe()
-	if err != nil {
-		return nil, err
-	}
+	rr, rw := Pipe()
 
 	dc := &DataChannel{
 		dc: rtcDataChannel,
 		rr: rr,
+		rw: rw,
+
+		openCond:  NewCond(),
+		closeCond: NewCond(),
 	}
+	dc.dc.OnClose(func() {
+		_ = dc.closeWithError(context.Canceled)
+	})
+	dc.dc.OnOpen(func() {
+		// for reasons I don't understand, when opened the data channel is not immediately available for use
+		time.Sleep(50 * time.Millisecond)
+		dc.openCond.Signal()
+	})
 	dc.dc.OnMessage(func(data []byte) {
 		log.WithField("data", data).
 			Debug("datachannel message")
@@ -45,11 +60,18 @@ func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
 		if rw != nil {
 			_, err := rw.Write(data)
 			if err != nil {
-				rw.Close()
+				_ = dc.closeWithError(err)
 				rw = nil
 			}
 		}
 	})
+
+	select {
+	case <-dc.closeCond.C:
+		return nil, dc.closeErr
+	case <-dc.openCond.C:
+	}
+
 	return dc, nil
 }
 
@@ -66,9 +88,7 @@ func (dc *DataChannel) Write(b []byte) (n int, err error) {
 }
 
 func (dc *DataChannel) Close() error {
-	//TODO: how do we close the datachannel?
-	dc.rr.Close()
-	return nil
+	return dc.closeWithError(nil)
 }
 
 func (dc *DataChannel) LocalAddr() net.Addr {
@@ -80,13 +100,31 @@ func (dc *DataChannel) RemoteAddr() net.Addr {
 }
 
 func (dc *DataChannel) SetDeadline(t time.Time) error {
-	panic("not implemented")
+	panic("SetDeadline not implemented")
 }
 
 func (dc *DataChannel) SetReadDeadline(t time.Time) error {
-	panic("not implemented")
+	panic("SetReadDeadline not implemented")
 }
 
 func (dc *DataChannel) SetWriteDeadline(t time.Time) error {
-	panic("not implemented")
+	panic("SetWriteDeadline not implemented")
+}
+
+func (dc *DataChannel) closeWithError(err error) error {
+	dc.closeCond.Do(func() {
+		e := dc.rr.Close()
+		if err == nil {
+			err = e
+		}
+		e = dc.rw.Close()
+		if err == nil {
+			err = e
+		}
+		e = dc.dc.Close()
+		if err == nil {
+			err = e
+		}
+	})
+	return err
 }

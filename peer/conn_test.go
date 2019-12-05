@@ -20,36 +20,49 @@ func TestConn(t *testing.T) {
 	key1 := crypt.GenerateKeyPair()
 	key2 := crypt.GenerateKeyPair()
 
+	var c1, c2 *Conn
+	defer func() {
+		if c1 != nil {
+			c1.Close()
+		}
+		if c2 != nil {
+			c2.Close()
+		}
+	}()
+
 	var eg errgroup.Group
 	eg.Go(func() error {
-		conn1, err := Open(key1, key2.Public, options...)
+		var err error
+		c1, err = Open(key1, key2.Public, options...)
 		if err != nil {
 			return err
 		}
 
-		conn2, port, err := conn1.Accept()
+		stream, port, err := c1.Accept()
 		if err != nil {
 			return err
 		}
-		defer conn2.Close()
+		defer stream.Close()
 
 		assert.Equal(t, 9000, port)
-		io.WriteString(conn2, "hello world\n")
+		_, err = io.WriteString(stream, "hello world\n")
+		assert.NoError(t, err)
 		return nil
 	})
 	eg.Go(func() error {
-		conn2, err := Open(key2, key1.Public, options...)
+		var err error
+		c2, err = Open(key2, key1.Public, options...)
 		if err != nil {
 			return err
 		}
 
-		conn1, err := conn2.Open(9000)
+		stream, err := c2.Open(9000)
 		if err != nil {
 			return err
 		}
-		defer conn1.Close()
+		defer stream.Close()
 
-		s := bufio.NewScanner(conn1)
+		s := bufio.NewScanner(stream)
 		assert.True(t, s.Scan())
 		assert.Equal(t, "hello world", s.Text())
 		return nil
