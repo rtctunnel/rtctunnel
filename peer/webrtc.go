@@ -2,7 +2,8 @@ package peer
 
 // An RTCDataChannel abstracts an RTCDataChannel
 type RTCDataChannel interface {
-	// OnClose(func())
+	Close() error
+	OnClose(func())
 	OnMessage(func([]byte))
 	OnOpen(func())
 	Send([]byte) error

@@ -1,7 +1,9 @@
 package peer
 
 import (
+	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -10,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/signal"
-	"github.com/xtaci/smux"
+	"github.com/xtaci/smux/v2"
 )
 
 // Conn wraps an RTCPeerConnection so connections can be made and accepted.
@@ -19,8 +21,13 @@ type Conn struct {
 	peerPublicKey crypt.Key
 
 	pc   RTCPeerConnection
-	dc   RTCDataChannel
 	sess *smux.Session
+
+	closeCond *Cond
+	closeErr  error
+
+	dataChannelOpenCond *Cond
+	dataChannel         RTCDataChannel
 }
 
 // Accept accepts a new connection over the datachannel.
@@ -71,15 +78,25 @@ func (conn *Conn) Open(port int) (stream net.Conn, err error) {
 
 // Close closes the peer connection
 func (conn *Conn) Close() error {
-	var err error
-	if conn.sess != nil {
-		err = conn.sess.Close()
-		conn.sess = nil
-	}
-	if conn.pc != nil {
-		err = conn.pc.Close()
-		conn.pc = nil
-	}
+	return conn.closeWithError(conn.closeErr)
+}
+
+func (conn *Conn) closeWithError(err error) error {
+	conn.closeCond.Do(func() {
+		if conn.sess != nil {
+			e := conn.sess.Close()
+			conn.sess = nil
+			if err == nil {
+				err = e
+			}
+		}
+		if conn.pc != nil {
+			e := conn.pc.Close()
+			if err == nil {
+				err = e
+			}
+		}
+	})
 	return err
 }
 
@@ -88,10 +105,14 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 	conn := &Conn{
 		keypair:       keypair,
 		peerPublicKey: peerPublicKey,
+
+		closeCond: NewCond(),
 	}
 
 	log.WithField("peer", peerPublicKey).
 		Info("creating webrtc peer connection")
+
+	connected := NewCond()
 
 	var err error
 	conn.pc, err = NewRTCPeerConnection()
@@ -99,124 +120,103 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 		conn.Close()
 		return nil, errors.Wrapf(err, "failed to create webrtc peer connection")
 	}
-	connectionReady := make(chan struct{})
 	conn.pc.OnICEConnectionStateChange(func(state string) {
-		log.WithField("peer", conn.peerPublicKey).
-			WithField("state", state).
-			Info("ice state change")
-		if state == "connected" {
-			close(connectionReady)
+		switch state {
+		case "connected":
+			connected.Signal()
+		case "closed":
+			_ = conn.closeWithError(context.Canceled)
 		}
 	})
 
 	if keypair.Public.String() < peerPublicKey.String() {
-		conn.dc, err = conn.pc.CreateDataChannel("mux")
+		conn.dataChannel, err = conn.pc.CreateDataChannel("mux")
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrapf(err, "failed to create datachannel")
+			return nil, conn.closeWithError(fmt.Errorf("error creating webrtc datachannel: %w", err))
 		}
 
 		// we create the offer
 		offer, err := conn.pc.CreateOffer()
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to create webrtc offer")
+			return nil, conn.closeWithError(fmt.Errorf("error creating webrtc offer: %w", err))
 		}
-
-		log.WithField("sdp", offer).Info("sending offer")
 
 		err = signal.Send(keypair, peerPublicKey, []byte(offer), options...)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to send webrtc offer")
+			return nil, conn.closeWithError(fmt.Errorf("error sending webrtc offer: %w", err))
 		}
 
 		answerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to receive webrtc answer")
+			return nil, conn.closeWithError(fmt.Errorf("error receiving webrtc answer: %w", err))
 		}
 		answerSDP := string(answerSDPBytes)
 
-		log.WithField("sdp", answerSDP).Info("received answer")
-
 		err = conn.pc.SetAnswer(answerSDP)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to set webrtc answer")
+			return nil, conn.closeWithError(fmt.Errorf("error setting webrtc answer: %w", err))
 		}
 
-		dcconn, err := WrapDataChannel(conn.dc)
+		dcconn, err := WrapDataChannel(conn.dataChannel)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to create datachannel connection wrapper")
+			return nil, conn.closeWithError(fmt.Errorf("error wrapping webrtc datachannel: %w", err))
 		}
 
 		conn.sess, err = smux.Server(dcconn, nil)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to create smux server")
+			return nil, conn.closeWithError(fmt.Errorf("error creating smux server: %w", err))
 		}
 	} else {
 		pending := make(chan RTCDataChannel, 1)
 		conn.pc.OnDataChannel(func(dc RTCDataChannel) {
-			pending <- dc
+			select {
+			case pending <- dc:
+			default:
+			}
 		})
 
 		offerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to receive webrtc offer")
+			return nil, conn.closeWithError(fmt.Errorf("error receiving webrtc offer: %w", err))
 		}
 		offerSDP := string(offerSDPBytes)
 
-		log.WithField("sdp", offerSDP).Info("received offer")
-
 		err = conn.pc.SetOffer(offerSDP)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to set webrtc offer")
+			return nil, conn.closeWithError(fmt.Errorf("error setting webrtc offer: %w", err))
 		}
 
 		answer, err := conn.pc.CreateAnswer()
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to create webrtc answer")
+			return nil, conn.closeWithError(fmt.Errorf("error creating webrtc answer: %w", err))
 		}
-
-		log.WithField("sdp", answer).Info("sending answer")
 
 		err = signal.Send(keypair, peerPublicKey, []byte(answer), options...)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to send webrtc answer")
+			return nil, conn.closeWithError(fmt.Errorf("error sending webrtc answer: %w", err))
 		}
 
 		select {
 		case <-time.After(time.Minute):
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to receive a new datachannel in time")
-		case conn.dc = <-pending:
+			return nil, conn.closeWithError(fmt.Errorf("failed to receive webrtc datachannel in time: %w", err))
+		case conn.dataChannel = <-pending:
 		}
 
-		dcconn, err := WrapDataChannel(conn.dc)
+		dcconn, err := WrapDataChannel(conn.dataChannel)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to create datachannel connection wrapper")
+			return nil, conn.closeWithError(fmt.Errorf("error wrapping webrtc datachannel: %w", err))
 		}
 
 		conn.sess, err = smux.Client(dcconn, nil)
 		if err != nil {
-			conn.Close()
-			return nil, errors.Wrap(err, "failed to create smux client")
+			return nil, conn.closeWithError(fmt.Errorf("error creating smux client: %w", err))
 		}
 	}
 
 	select {
 	case <-time.After(time.Minute):
-		conn.Close()
-		return nil, errors.Wrap(err, "failed to connect in time")
-	case <-connectionReady:
+		return nil, conn.closeWithError(fmt.Errorf("failed to connect in time: %w", err))
+	case <-connected.C:
 	}
 
 	return conn, nil

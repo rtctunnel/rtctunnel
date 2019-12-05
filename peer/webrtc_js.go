@@ -14,6 +14,17 @@ type jsRTCDataChannel struct {
 	object *js.Object
 }
 
+func (dc jsRTCDataChannel) Close() error {
+	dc.Call("close")
+	return nil
+}
+
+func (dc jsRTCDataChannel) OnClose(handler func()) {
+	dc.object.Set("onclose", func(evt *js.Object) {
+		handler()
+	})
+}
+
 func (dc jsRTCDataChannel) OnMessage(handler func([]byte)) {
 	dc.object.Set("onmessage", func(evt *js.Object) {
 		bs := js.Global.Get("Uint8Array").New(evt.Get("data")).Interface().([]byte)
@@ -196,12 +207,12 @@ func (p *jsPipe) Write(bs []byte) (int, error) {
 	}
 }
 
-func Pipe() (io.ReadCloser, io.WriteCloser, error) {
+func Pipe() (io.ReadCloser, io.WriteCloser) {
 	p := &jsPipe{
 		ch:     make(chan []byte),
 		closer: make(chan struct{}),
 	}
-	return p, p, nil
+	return p, p
 }
 
 func consolelog(args ...interface{}) {
