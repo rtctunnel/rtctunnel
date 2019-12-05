@@ -34,14 +34,14 @@ type Conn struct {
 func (conn *Conn) Accept() (stream net.Conn, port int, err error) {
 	stream, err = conn.sess.AcceptStream()
 	if err != nil {
-		return nil, 0, errors.New("failed to accept smux stream")
+		return nil, 0, fmt.Errorf("failed to accept smux stream: %w", err)
 	}
 
 	var portData [8]byte
 	_, err = io.ReadFull(stream, portData[:])
 	if err != nil {
 		stream.Close()
-		return nil, 0, errors.New("failed to read port from smux stream")
+		return nil, 0, fmt.Errorf("failed to read port from smux stream: %w", err)
 	}
 
 	port = int(binary.BigEndian.Uint64(portData[:]))

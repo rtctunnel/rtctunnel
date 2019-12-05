@@ -44,7 +44,7 @@ func (c *operatorChannel) Recv(key string) (data string, err error) {
 	log.WithFields(log.Fields{
 		"url": c.url,
 		"key": key,
-	}).Info("[operator] receive")
+	}).Debug("[operator] receive")
 
 	uv := url.Values{
 		"address": {key},
@@ -89,7 +89,7 @@ func (c *operatorChannel) Send(key, data string) error {
 		"url":  c.url,
 		"key":  key,
 		"data": data,
-	}).Info("[operator] send")
+	}).Debug("[operator] send")
 
 	uv := url.Values{
 		"address": {key},
