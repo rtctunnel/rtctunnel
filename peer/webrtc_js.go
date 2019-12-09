@@ -19,6 +19,10 @@ func (dc jsRTCDataChannel) Close() error {
 	return nil
 }
 
+func (dc jsRTCDataChannel) Label() string {
+	return dc.object.Get("label").String()
+}
+
 func (dc jsRTCDataChannel) OnClose(handler func()) {
 	dc.object.Set("onclose", func(evt *js.Object) {
 		handler()

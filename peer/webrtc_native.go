@@ -18,6 +18,10 @@ func (dc nativeRTCDataChannel) Close() error {
 	return dc.native.Close()
 }
 
+func (dc nativeRTCDataChannel) Label() string {
+	return dc.native.Label()
+}
+
 func (dc nativeRTCDataChannel) OnClose(handler func()) {
 	dc.native.OnClose(handler)
 }

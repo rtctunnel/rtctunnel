@@ -2,17 +2,16 @@ package peer
 
 import (
 	"context"
-	"encoding/binary"
+	"errors"
 	"fmt"
-	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/apex/log"
-	"github.com/pkg/errors"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/signal"
-	"github.com/xtaci/smux/v2"
 )
 
 // Conn wraps an RTCPeerConnection so connections can be made and accepted.
@@ -20,60 +19,66 @@ type Conn struct {
 	keypair       crypt.KeyPair
 	peerPublicKey crypt.Key
 
-	pc   RTCPeerConnection
-	sess *smux.Session
+	pc RTCPeerConnection
 
 	closeCond *Cond
 	closeErr  error
 
-	dataChannelOpenCond *Cond
-	dataChannel         RTCDataChannel
+	incoming chan RTCDataChannel
 }
 
 // Accept accepts a new connection over the datachannel.
 func (conn *Conn) Accept() (stream net.Conn, port int, err error) {
-	stream, err = conn.sess.AcceptStream()
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to accept smux stream: %w", err)
+	for dc := range conn.incoming {
+		lbl := dc.Label()
+		idx := strings.LastIndexByte(lbl, ':')
+		if idx < 0 {
+			log.WithField("label", lbl).Info("ignoring datachannel")
+			continue
+		}
+		name := lbl[:idx]
+		port, err := strconv.Atoi(lbl[idx+1:])
+		if err != nil || name != "rtctunnel" {
+			log.WithField("label", lbl).Info("ignoring datachannel")
+			continue
+		}
+
+		stream, err := WrapDataChannel(dc)
+		if errors.Is(err, ErrClosedByPeer) {
+			log.WithField("label", lbl).Info("datachannel was closed by peer")
+			continue
+		} else if err != nil {
+			dc.Close()
+			return nil, 0, err
+		}
+
+		log.WithField("peer", conn.peerPublicKey).
+			WithField("port", port).
+			Info("accepted connection")
+
+		return stream, port, nil
 	}
-
-	var portData [8]byte
-	_, err = io.ReadFull(stream, portData[:])
-	if err != nil {
-		stream.Close()
-		return nil, 0, fmt.Errorf("failed to read port from smux stream: %w", err)
-	}
-
-	port = int(binary.BigEndian.Uint64(portData[:]))
-
-	log.WithField("peer", conn.peerPublicKey).
-		WithField("port", port).
-		Info("accepted connection")
-
-	return stream, port, err
+	return nil, 0, context.Canceled
 }
 
 // Open opens a new connection over the datachannel.
 func (conn *Conn) Open(port int) (stream net.Conn, err error) {
-	stream, err = conn.sess.OpenStream()
+	dc, err := conn.pc.CreateDataChannel(fmt.Sprintf("rtctunnel:%d", port))
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open smux stream")
+		return nil, fmt.Errorf("failed to open RTCDataChannel: %w", err)
 	}
 
-	var portData [8]byte
-	binary.BigEndian.PutUint64(portData[:], uint64(port))
-
-	_, err = stream.Write(portData[:])
+	stream, err = WrapDataChannel(dc)
 	if err != nil {
-		stream.Close()
-		return nil, errors.Wrapf(err, "failed to write port to smux stream")
+		dc.Close()
+		return nil, err
 	}
 
 	log.WithField("peer", conn.peerPublicKey).
 		WithField("port", port).
 		Info("opened connection")
 
-	return stream, nil
+	return stream, err
 }
 
 // Close closes the peer connection
@@ -83,13 +88,6 @@ func (conn *Conn) Close() error {
 
 func (conn *Conn) closeWithError(err error) error {
 	conn.closeCond.Do(func() {
-		if conn.sess != nil {
-			e := conn.sess.Close()
-			conn.sess = nil
-			if err == nil {
-				err = e
-			}
-		}
 		if conn.pc != nil {
 			e := conn.pc.Close()
 			if err == nil {
@@ -107,6 +105,8 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 		peerPublicKey: peerPublicKey,
 
 		closeCond: NewCond(),
+
+		incoming: make(chan RTCDataChannel, 1),
 	}
 
 	log.WithField("peer", peerPublicKey).
@@ -118,7 +118,7 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 	conn.pc, err = NewRTCPeerConnection()
 	if err != nil {
 		conn.Close()
-		return nil, errors.Wrapf(err, "failed to create webrtc peer connection")
+		return nil, fmt.Errorf("failed to create webrtc peer connection: %w", err)
 	}
 	conn.pc.OnICEConnectionStateChange(func(state string) {
 		switch state {
@@ -128,12 +128,16 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 			_ = conn.closeWithError(context.Canceled)
 		}
 	})
+	conn.pc.OnDataChannel(func(dc RTCDataChannel) {
+		conn.incoming <- dc
+	})
 
 	if keypair.Public.String() < peerPublicKey.String() {
-		conn.dataChannel, err = conn.pc.CreateDataChannel("mux")
+		dc, err := conn.pc.CreateDataChannel("rtctunnel:init")
 		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error creating webrtc datachannel: %w", err))
+			return nil, conn.closeWithError(fmt.Errorf("error creating init datachannel: %w", err))
 		}
+		defer dc.Close()
 
 		// we create the offer
 		offer, err := conn.pc.CreateOffer()
@@ -157,24 +161,7 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 			return nil, conn.closeWithError(fmt.Errorf("error setting webrtc answer: %w", err))
 		}
 
-		dcconn, err := WrapDataChannel(conn.dataChannel)
-		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error wrapping webrtc datachannel: %w", err))
-		}
-
-		conn.sess, err = smux.Server(dcconn, nil)
-		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error creating smux server: %w", err))
-		}
 	} else {
-		pending := make(chan RTCDataChannel, 1)
-		conn.pc.OnDataChannel(func(dc RTCDataChannel) {
-			select {
-			case pending <- dc:
-			default:
-			}
-		})
-
 		offerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error receiving webrtc offer: %w", err))
@@ -194,22 +181,6 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 		err = signal.Send(keypair, peerPublicKey, []byte(answer), options...)
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error sending webrtc answer: %w", err))
-		}
-
-		select {
-		case <-time.After(time.Minute):
-			return nil, conn.closeWithError(fmt.Errorf("failed to receive webrtc datachannel in time: %w", err))
-		case conn.dataChannel = <-pending:
-		}
-
-		dcconn, err := WrapDataChannel(conn.dataChannel)
-		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error wrapping webrtc datachannel: %w", err))
-		}
-
-		conn.sess, err = smux.Client(dcconn, nil)
-		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error creating smux client: %w", err))
 		}
 	}
 
