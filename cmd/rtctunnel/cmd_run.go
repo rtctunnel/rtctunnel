@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -152,7 +153,7 @@ func joinConns(c1, c2 net.Conn) {
 		errc <- err
 	}()
 	err := <-errc
-	if err != nil {
+	if err != nil && err != io.EOF && err != context.Canceled {
 		log.WithError(err).Warn("error copying data between connections")
 	}
 }

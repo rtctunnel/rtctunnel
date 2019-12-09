@@ -16,7 +16,8 @@ RUN go build -v -ldflags '-extldflags "-static"' \
     -o /usr/local/bin/rtctunnel ./cmd/rtctunnel
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+RUN apk add --no-cache --update \
+    ca-certificates
 WORKDIR /root
 COPY --from=0 /usr/local/bin/rtctunnel /usr/local/bin/rtctunnel
 CMD ["/usr/local/bin/rtctunnel"]
