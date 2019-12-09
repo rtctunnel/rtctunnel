@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -80,7 +82,8 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 	for {
 		remote, port, err := pc.Accept()
 		if err != nil {
-			log.WithError(err).Fatal("failed to accept remote connection")
+			log.WithError(err).Error("failed to accept remote connection")
+			continue
 		}
 
 		allowed := false
@@ -152,7 +155,7 @@ func joinConns(c1, c2 net.Conn) {
 		errc <- err
 	}()
 	err := <-errc
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
 		log.WithError(err).Warn("error copying data between connections")
 	}
 }

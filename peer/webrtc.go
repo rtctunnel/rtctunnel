@@ -3,6 +3,7 @@ package peer
 // An RTCDataChannel abstracts an RTCDataChannel
 type RTCDataChannel interface {
 	Close() error
+	Label() string
 	OnClose(func())
 	OnMessage(func([]byte))
 	OnOpen(func())

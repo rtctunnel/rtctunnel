@@ -1,13 +1,15 @@
 package peer
 
 import (
-	"context"
+	"errors"
 	"io"
 	"net"
 	"time"
 
 	"github.com/apex/log"
 )
+
+var ErrClosedByPeer = errors.New("closed by peer")
 
 type dataChannelAddr struct{}
 
@@ -30,8 +32,6 @@ type DataChannel struct {
 	closeErr  error
 }
 
-var _ net.Conn = (*DataChannel)(nil)
-
 // WrapDataChannel wraps an rtc data channel and implements the net.Conn
 // interface
 func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
@@ -46,7 +46,7 @@ func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
 		closeCond: NewCond(),
 	}
 	dc.dc.OnClose(func() {
-		_ = dc.closeWithError(context.Canceled)
+		_ = dc.closeWithError(ErrClosedByPeer)
 	})
 	dc.dc.OnOpen(func() {
 		// for reasons I don't understand, when opened the data channel is not immediately available for use
@@ -68,7 +68,11 @@ func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
 
 	select {
 	case <-dc.closeCond.C:
-		return nil, dc.closeErr
+		err := dc.closeErr
+		if err == nil {
+			err = errors.New("datachannel closed for unknown reasons")
+		}
+		return nil, err
 	case <-dc.openCond.C:
 	}
 
@@ -125,6 +129,7 @@ func (dc *DataChannel) closeWithError(err error) error {
 		if err == nil {
 			err = e
 		}
+		dc.closeErr = err
 	})
 	return err
 }

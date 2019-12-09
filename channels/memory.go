@@ -33,14 +33,14 @@ func newMemoryChannel(addr string) (*memoryChannel, error) {
 func (mch *memoryChannel) Send(key, data string) error {
 	log.WithField("key", key).
 		WithField("data", data).
-		Info("[MemoryChannel] sending")
+		Debug("[MemoryChannel] sending")
 	mch.getChannel(key) <- data
 	return nil
 }
 
 func (mch *memoryChannel) Recv(key string) (data string, err error) {
 	log.WithField("key", key).
-		Info("[MemoryChannel] receiving")
+		Debug("[MemoryChannel] receiving")
 	data = <-mch.getChannel(key)
 	return data, nil
 }
