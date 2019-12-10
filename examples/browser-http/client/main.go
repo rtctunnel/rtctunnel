@@ -1,12 +1,15 @@
+//+build js
+
 package main
 
 import (
+	"bufio"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"strings"
+	"syscall/js"
+	"time"
 
-	"github.com/gopherjs/gopherjs/js"
 	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/ext/js/localstorage"
@@ -37,11 +40,13 @@ func main() {
 		keypair = crypt.KeyPair{Private: private, Public: public}
 	}
 
-	js.Global.Set("onload", onload)
+	onload()
+
+	for range time.Tick(time.Second) {}
 }
 
 func onload() {
-	doc := js.Global.Get("document")
+	doc := js.Global().Get("document")
 	body := doc.Call("getElementsByTagName", "body").Index(0)
 	body.Get("style").Set("fontFamily", "monospace")
 
@@ -65,13 +70,16 @@ func onload() {
 	form.Call("appendChild", button)
 	body.Call("appendChild", form)
 
-	form.Set("onsubmit", onsubmitpeerkey)
+	form.Set("onsubmit", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		onsubmitpeerkey(args[0])
+		return false
+	}))
 }
 
-func onsubmitpeerkey(evt *js.Object) {
+func onsubmitpeerkey(evt js.Value) {
 	evt.Call("preventDefault")
 
-	value := js.Global.Get("document").Call("getElementById", "peerPublicKey").Get("value").String()
+	value := js.Global().Get("document").Call("getElementById", "peerPublicKey").Get("value").String()
 	peerPublicKey, err := crypt.NewKey(value)
 	if err != nil {
 		log.Fatal().Err(err).Msg("invalid peer key")
@@ -79,13 +87,45 @@ func onsubmitpeerkey(evt *js.Object) {
 	}
 	localstorage.Set(localStoragePeerKey, peerPublicKey.String())
 
-	doc := js.Global.Get("document")
+	doc := js.Global().Get("document")
 	body := doc.Call("getElementsByTagName", "body").Index(0)
 	p := doc.Call("createElement", "p")
 	p.Set("innerHTML", "connecting")
 	body.Call("appendChild", p)
 
 	go openConnection(peerPublicKey)
+}
+
+type transport struct {
+	conn *peer.Conn
+}
+
+func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	c, err := t.conn.Open(80)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+
+	log.Info().Str("url", req.URL.String()).Msg("sending request")
+
+	err = req.Write(c)
+	if err != nil {
+		return nil, err
+	}
+
+
+	log.Info().Str("url", req.URL.String()).Msg("reading response")
+
+	cbr := bufio.NewReader(c)
+	res, err := http.ReadResponse(cbr, req)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info().Int("status_code", res.StatusCode).Msg("received response")
+
+	return res, nil
 }
 
 func openConnection(peerPublicKey crypt.Key) {
@@ -97,11 +137,7 @@ func openConnection(peerPublicKey crypt.Key) {
 	defer conn.Close()
 
 	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				return conn.Open(80)
-			},
-		},
+		Transport: transport{conn},
 	}
 	resp, err := client.Get("http://peer/")
 	if err != nil {
@@ -112,11 +148,11 @@ func openConnection(peerPublicKey crypt.Key) {
 
 	bs, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		js.Global.Call("alert", err.Error())
+		js.Global().Call("alert", err.Error())
 		return
 	}
 
-	doc := js.Global.Get("document")
+	doc := js.Global().Get("document")
 	body := doc.Call("getElementsByTagName", "body").Index(0)
 	body.Call("appendChild", doc.Call("createTextNode", string(bs)))
 }

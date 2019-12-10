@@ -1,9 +1,9 @@
 module github.com/rtctunnel/rtctunnel
 
 require (
-	github.com/gopherjs/gopherjs v0.0.0-20190430165422-3e4dfb77656c
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/mr-tron/base58 v1.1.2
+	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/pion/webrtc/v2 v2.1.16
 	github.com/pkg/errors v0.8.1
 	github.com/rs/zerolog v1.17.2

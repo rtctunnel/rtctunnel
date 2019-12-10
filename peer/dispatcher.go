@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Dispatcher struct {
@@ -46,6 +48,7 @@ func NewDispatcher(conn *Conn) *Dispatcher {
 			d.mu.Unlock()
 
 			if shouldClose {
+				log.Warn().Int("port", port).Msg("closing connection because no listener accepted it")
 				conn.Close()
 			}
 		}

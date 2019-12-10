@@ -33,6 +33,12 @@ func runHTTP(li net.Listener) {
 
 
 </pre>
-<script src="server.js"></script>
+<script src="wasm_exec.js"></script>
+<script>
+    const go = new Go();
+    WebAssembly.instantiateStreaming(fetch("server.wasm"), go.importObject).then((result) => {
+        go.run(result.instance);
+    });
+</script>
 </body>
 </html>
