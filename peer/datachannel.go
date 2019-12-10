@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -24,8 +25,8 @@ func (addr dataChannelAddr) String() string {
 // A DataChannel implements the net.Conn interface over a webrtc data channel
 type DataChannel struct {
 	dc RTCDataChannel
-	rr io.ReadCloser
-	rw io.WriteCloser
+	rr ContextReadCloser
+	rw ContextWriteCloser
 
 	openCond  *Cond
 	closeCond *Cond
@@ -35,12 +36,12 @@ type DataChannel struct {
 // WrapDataChannel wraps an rtc data channel and implements the net.Conn
 // interface
 func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
-	rr, rw := Pipe()
+	rr, rw := io.Pipe()
 
 	dc := &DataChannel{
 		dc: rtcDataChannel,
-		rr: rr,
-		rw: rw,
+		rr: ContextReadCloser{Context: context.Background(), ReadCloser: rr},
+		rw: ContextWriteCloser{Context: context.Background(), WriteCloser: rw},
 
 		openCond:  NewCond(),
 		closeCond: NewCond(),
@@ -104,15 +105,22 @@ func (dc *DataChannel) RemoteAddr() net.Addr {
 }
 
 func (dc *DataChannel) SetDeadline(t time.Time) error {
-	panic("SetDeadline not implemented")
+	var err error
+	if e := dc.SetReadDeadline(t); e != nil {
+		err = e
+	}
+	if e := dc.SetWriteDeadline(t); e != nil {
+		err = e
+	}
+	return err
 }
 
 func (dc *DataChannel) SetReadDeadline(t time.Time) error {
-	panic("SetReadDeadline not implemented")
+	return dc.rr.SetReadDeadline(t)
 }
 
 func (dc *DataChannel) SetWriteDeadline(t time.Time) error {
-	panic("SetWriteDeadline not implemented")
+	return dc.rw.SetWriteDeadline(t)
 }
 
 func (dc *DataChannel) closeWithError(err error) error {
@@ -132,4 +140,80 @@ func (dc *DataChannel) closeWithError(err error) error {
 		dc.closeErr = err
 	})
 	return err
+}
+
+type ContextReadCloser struct {
+	context.Context
+	io.ReadCloser
+	cancel func()
+}
+
+func (cr ContextReadCloser) Close() error {
+	err := cr.ReadCloser.Close()
+	if cr.cancel != nil {
+		cr.cancel()
+		cr.cancel = nil
+	}
+	return err
+}
+
+func (cr ContextReadCloser) SetReadDeadline(t time.Time) error {
+	if cr.cancel != nil {
+		cr.cancel()
+		cr.cancel = nil
+	}
+	cr.Context, cr.cancel = context.WithDeadline(context.Background(), t)
+	return nil
+}
+
+func (cr ContextReadCloser) Read(p []byte) (n int, err error) {
+	done := make(chan struct{})
+	go func() {
+		n, err = cr.ReadCloser.Read(p)
+		close(done)
+	}()
+	select {
+	case <-done:
+		return n, err
+	case <-cr.Context.Done():
+		return 0, cr.Context.Err()
+	}
+}
+
+type ContextWriteCloser struct {
+	context.Context
+	io.WriteCloser
+	cancel func()
+}
+
+func (cw ContextWriteCloser) Close() error {
+	err := cw.WriteCloser.Close()
+	if cw.cancel != nil {
+		cw.cancel()
+		cw.cancel = nil
+	}
+	return err
+}
+
+func (cw ContextWriteCloser) SetWriteDeadline(t time.Time) error {
+	if cw.cancel != nil {
+		cw.cancel()
+		cw.cancel = nil
+	}
+	cw.Context, cw.cancel = context.WithDeadline(context.Background(), t)
+	return nil
+}
+
+func (cw ContextWriteCloser) Write(p []byte) (n int, err error) {
+	done := make(chan struct{})
+	go func() {
+		n, err = cw.WriteCloser.Write(p)
+		close(done)
+	}()
+	select {
+	case <-done:
+		return n, err
+	case <-cw.Context.Done():
+		return 0, cw.Context.Err()
+	}
 }

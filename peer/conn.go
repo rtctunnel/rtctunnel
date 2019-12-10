@@ -136,11 +136,10 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 	})
 
 	if keypair.Public.String() < peerPublicKey.String() {
-		dc, err := conn.pc.CreateDataChannel("rtctunnel:init")
+		_, err := conn.pc.CreateDataChannel("rtctunnel:init")
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error creating init datachannel: %w", err))
 		}
-		defer dc.Close()
 
 		// we create the offer
 		offer, err := conn.pc.CreateOffer()

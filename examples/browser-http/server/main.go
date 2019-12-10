@@ -5,8 +5,10 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"syscall/js"
+	"time"
 
-	"github.com/gopherjs/gopherjs/js"
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/ext/js/localstorage"
 	"github.com/rtctunnel/rtctunnel/peer"
@@ -36,11 +38,14 @@ func main() {
 		keypair = crypt.KeyPair{Private: private, Public: public}
 	}
 
-	js.Global.Set("onload", onload)
+	onload()
+
+	for range time.Tick(time.Second) {
+	}
 }
 
 func onload() {
-	doc := js.Global.Get("document")
+	doc := js.Global().Get("document")
 	body := doc.Call("getElementsByTagName", "body").Index(0)
 	body.Get("style").Set("fontFamily", "monospace")
 
@@ -64,22 +69,24 @@ func onload() {
 	form.Call("appendChild", button)
 	body.Call("appendChild", form)
 
-	form.Set("onsubmit", onsubmitpeerkey)
-
+	form.Set("onsubmit", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		onsubmitpeerkey(args[0])
+		return false
+	}))
 }
 
-func onsubmitpeerkey(evt *js.Object) {
+func onsubmitpeerkey(evt js.Value) {
 	evt.Call("preventDefault")
 
-	value := js.Global.Get("document").Call("getElementById", "peerPublicKey").Get("value").String()
+	value := js.Global().Get("document").Call("getElementById", "peerPublicKey").Get("value").String()
 	peerPublicKey, err := crypt.NewKey(value)
 	if err != nil {
-		js.Global.Call("alert", err.Error())
+		js.Global().Call("alert", err.Error())
 		return
 	}
 	localstorage.Set(localStoragePeerKey, peerPublicKey.String())
 
-	doc := js.Global.Get("document")
+	doc := js.Global().Get("document")
 	body := doc.Call("getElementsByTagName", "body").Index(0)
 	p := doc.Call("createElement", "p")
 	p.Set("innerHTML", "run: rtctunnel add-route"+
@@ -95,7 +102,7 @@ func onsubmitpeerkey(evt *js.Object) {
 func openConnection(peerPublicKey crypt.Key) {
 	conn, err := peer.Open(keypair, peerPublicKey)
 	if err != nil {
-		js.Global.Call("alert", err.Error())
+		js.Global().Call("alert", err.Error())
 		return
 	}
 	defer conn.Close()
@@ -108,11 +115,12 @@ func openConnection(peerPublicKey crypt.Key) {
 func runHTTP(li net.Listener) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Info().Str("url", r.URL.String()).Msg("received request")
 		io.WriteString(w, "Hello World")
 	})
 	err := http.Serve(li, mux)
 	if err != nil {
-		js.Global.Call("alert", err.Error())
+		js.Global().Call("alert", err.Error())
 		return
 	}
 }

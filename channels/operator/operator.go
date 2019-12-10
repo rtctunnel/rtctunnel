@@ -31,11 +31,6 @@ type operatorChannel struct {
 
 // New creates a new operatorChannel.
 func New(url string) channels.Channel {
-	_, err := DefaultClient.Head(url)
-	if err != nil && strings.Contains(err.Error(), "server gave HTTP response") {
-		// switch to http
-		url = strings.Replace(url, "https://", "http://", 1)
-	}
 	return &operatorChannel{url: url}
 }
 
@@ -47,7 +42,8 @@ func (c *operatorChannel) Recv(key string) (data string, err error) {
 		"address": {key},
 	}
 	for {
-		resp, err := DefaultClient.Get(c.url + "/sub?" + uv.Encode())
+		req, _ := http.NewRequest("GET", c.url+"/sub?"+uv.Encode(), nil)
+		resp, err := c.do(req)
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 				log.Warn().Msg("[operator] timed-out, retrying")
@@ -86,7 +82,9 @@ func (c *operatorChannel) Send(key, data string) error {
 		"data":    {data},
 	}
 	for {
-		resp, err := DefaultClient.PostForm(c.url+"/pub", uv)
+		req, _ := http.NewRequest("POST", c.url+"/pub", strings.NewReader(uv.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := c.do(req)
 		if err != nil {
 			return err
 		}
@@ -102,5 +100,17 @@ func (c *operatorChannel) Send(key, data string) error {
 		resp.Body.Close()
 
 		return nil
+	}
+}
+
+func (c *operatorChannel) do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("js.fetch:mode", "cors")
+	for {
+		res, err := DefaultClient.Do(req)
+		if err != nil && strings.Contains(c.url, "https://") && strings.Contains(err.Error(), "server gave HTTP response") {
+			c.url = strings.Replace(c.url, "https://", "http://", 1)
+			continue
+		}
+		return res, err
 	}
 }

@@ -121,7 +121,3 @@ func NewRTCPeerConnection() (RTCPeerConnection, error) {
 	}
 	return nativeRTCPeerConnection{pc}, nil
 }
-
-func Pipe() (io.ReadCloser, io.WriteCloser) {
-	return io.Pipe()
-}

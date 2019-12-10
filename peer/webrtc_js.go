@@ -4,18 +4,22 @@ package peer
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
-	"github.com/gopherjs/gopherjs/js"
+	"syscall/js"
 )
 
+type M = map[string]interface{}
+type S = []interface{}
+
 type jsRTCDataChannel struct {
-	object *js.Object
+	object js.Value
 }
 
 func (dc jsRTCDataChannel) Close() error {
-	dc.Call("close")
+	dc.object.Call("close")
 	return nil
 }
 
@@ -24,36 +28,51 @@ func (dc jsRTCDataChannel) Label() string {
 }
 
 func (dc jsRTCDataChannel) OnClose(handler func()) {
-	dc.object.Set("onclose", func(evt *js.Object) {
-		handler()
+	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		go handler()
+		return js.Undefined()
 	})
+	dc.object.Set("onclose", f)
 }
 
 func (dc jsRTCDataChannel) OnMessage(handler func([]byte)) {
-	dc.object.Set("onmessage", func(evt *js.Object) {
-		bs := js.Global.Get("Uint8Array").New(evt.Get("data")).Interface().([]byte)
-		handler(bs)
+	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		consolelog("RTCPeerConnection::onmessage", args[0].Get("data"))
+		evt := args[0]
+		src := js.Global().Get("Uint8Array").New(evt.Get("data"))
+		dst := make([]byte, src.Length())
+		js.CopyBytesToGo(dst, src)
+		go handler(dst)
+		return js.Undefined()
 	})
+	dc.object.Set("onmessage", f)
 }
 
 func (dc jsRTCDataChannel) OnOpen(handler func()) {
-	dc.object.Set("onopen", func(evt *js.Object) {
-		handler()
+	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		go handler()
+		return js.Undefined()
 	})
+	dc.object.Set("onopen", f)
 }
 
 func (dc jsRTCDataChannel) Send(data []byte) error {
-	dc.object.Call("send", data)
-	return nil
+	return jsExceptionToGoError(func() {
+		dst := js.Global().Get("Uint8Array").New(len(data))
+		js.CopyBytesToJS(dst, data)
+		dc.object.Call("send", dst)
+	})
 }
 
 type jsRTCPeerConnection struct {
-	object   *js.Object
+	object   js.Value
 	iceready chan struct{}
 }
 
 func (pc *jsRTCPeerConnection) Close() error {
-	pc.object.Call("close")
+	if pc.object.Truthy() {
+		pc.object.Call("close")
+	}
 	return nil
 }
 
@@ -63,17 +82,21 @@ func (pc *jsRTCPeerConnection) CreateDataChannel(label string) (RTCDataChannel, 
 }
 
 func (pc *jsRTCPeerConnection) OnICEConnectionStateChange(handler func(state string)) {
-	pc.object.Set("oniceconnectionstatechange", func(evt *js.Object) {
-		handler(pc.object.Get("iceConnectionState").String())
+	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		go handler(pc.object.Get("iceConnectionState").String())
+		return js.Undefined()
 	})
+	pc.object.Set("oniceconnectionstatechange", f)
 }
 
 func (pc *jsRTCPeerConnection) OnDataChannel(handler func(RTCDataChannel)) {
-	pc.object.Set("ondatachannel", func(evt *js.Object) {
-		obj := evt.Get("channel")
+	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := args[0].Get("channel")
 		dc := jsRTCDataChannel{obj}
-		handler(dc)
+		go handler(dc)
+		return js.Undefined()
 	})
+	pc.object.Set("ondatachannel", f)
 }
 
 func (pc *jsRTCPeerConnection) CreateAnswer() (string, error) {
@@ -90,36 +113,60 @@ func (pc *jsRTCPeerConnection) CreateOffer() (string, error) {
 
 func (pc *jsRTCPeerConnection) SetAnswer(answer string) error {
 	consolelog("RTCPeerConnection::SetAnswer", answer)
-	pc.object.Call("setRemoteDescription", js.M{
+	promise := pc.object.Call("setRemoteDescription", M{
 		"type": "answer",
 		"sdp":  answer,
 	})
-	return nil
+	return pc.handleRemoteSDPPromise(promise)
 }
 
 func (pc *jsRTCPeerConnection) SetOffer(offer string) error {
 	consolelog("RTCPeerConnection::SetOffer", offer)
-	pc.object.Call("setRemoteDescription", js.M{
+	promise := pc.object.Call("setRemoteDescription", M{
 		"type": "offer",
 		"sdp":  offer,
 	})
-	return nil
+	return pc.handleRemoteSDPPromise(promise)
 }
 
-func (pc *jsRTCPeerConnection) handleLocalSDPPromise(promise *js.Object) (string, error) {
+func (pc *jsRTCPeerConnection) handleRemoteSDPPromise(promise js.Value) error {
+	errc := make(chan error, 1)
+	promise.
+		Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			go func() {
+				errc <- nil
+			}()
+			return nil
+		})).
+		Call("catch", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			err := args[0]
+			go func() {
+				errc <- errors.New(err.String())
+			}()
+			return nil
+		}))
+	return <-errc
+}
+
+func (pc *jsRTCPeerConnection) handleLocalSDPPromise(promise js.Value) (string, error) {
 	sdpc := make(chan string, 1)
 	errc := make(chan error, 1)
-	promise.Call("then", func(desc *js.Object) *js.Object {
-		go func() {
-			<-pc.iceready
-			sdpc <- pc.object.Get("localDescription").Get("sdp").String()
-		}()
-		return pc.object.Call("setLocalDescription", desc)
-	}).Call("catch", func(err *js.Object) {
-		go func() {
-			errc <- errors.New(err.String())
-		}()
-	})
+	promise.
+		Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			desc := args[0]
+			go func() {
+				<-pc.iceready
+				sdpc <- pc.object.Get("localDescription").Get("sdp").String()
+			}()
+			return pc.object.Call("setLocalDescription", desc)
+		})).
+		Call("catch", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			err := args[0]
+			go func() {
+				errc <- errors.New(err.String())
+			}()
+			return js.Undefined()
+		}))
 
 	select {
 	case sdp := <-sdpc:
@@ -130,9 +177,9 @@ func (pc *jsRTCPeerConnection) handleLocalSDPPromise(promise *js.Object) (string
 }
 
 func NewRTCPeerConnection() (RTCPeerConnection, error) {
-	obj := js.Global.Get("RTCPeerConnection").New(js.M{
-		"iceServers": js.S{
-			js.M{
+	obj := js.Global().Get("RTCPeerConnection").New(M{
+		"iceServers": S{
+			M{
 				"urls": "stun:stun.l.google.com:19302",
 			},
 		},
@@ -141,12 +188,23 @@ func NewRTCPeerConnection() (RTCPeerConnection, error) {
 		object:   obj,
 		iceready: make(chan struct{}),
 	}
-	obj.Set("onicecandidate", func(evt *js.Object) {
-		if !evt.Get("candidate").Bool() {
+	obj.Set("onsignalingstatechange", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		consolelog("RTCPeerConnection::onsignalingstatechange", args[0].Get("target").Get("signalingState"))
+		return nil
+	}))
+	obj.Set("onicecandidate", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		consolelog("RTCPeerConnection::onicecandidate", args[0].Get("candidate"))
+		evt := args[0]
+		if !evt.Get("candidate").Truthy() {
 			consolelog("RTCPeerConnection::iceready")
 			close(pc.iceready)
 		}
-	})
+		return js.Undefined()
+	}))
+	obj.Set("oniceconnectionstatechange", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		consolelog("RTCPeerConnection::oniceconnectionstatechange", args[0].Get("target").Get("iceConnectionState"))
+		return nil
+	}))
 	return pc, nil
 }
 
@@ -211,14 +269,19 @@ func (p *jsPipe) Write(bs []byte) (int, error) {
 	}
 }
 
-func Pipe() (io.ReadCloser, io.WriteCloser) {
-	p := &jsPipe{
-		ch:     make(chan []byte),
-		closer: make(chan struct{}),
-	}
-	return p, p
+func consolelog(args ...interface{}) {
+	js.Global().Get("console").Call("log", args...)
 }
 
-func consolelog(args ...interface{}) {
-	js.Global.Get("console").Call("log", args...)
+func jsExceptionToGoError(f func()) error {
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("%v", err)
+			}
+		}()
+		f()
+	}()
+	return err
 }
