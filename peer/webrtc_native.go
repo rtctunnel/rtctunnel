@@ -3,6 +3,7 @@
 package peer
 
 import (
+	"encoding/json"
 	"strings"
 
 	webrtc "github.com/pion/webrtc/v2"
@@ -45,12 +46,32 @@ type nativeRTCPeerConnection struct {
 	*webrtc.PeerConnection
 }
 
+func (pc nativeRTCPeerConnection) AddICECandidate(candidate string) error {
+	var obj webrtc.ICECandidateInit
+	err := json.Unmarshal([]byte(candidate), &obj)
+	if err != nil {
+		return err
+	}
+	return pc.PeerConnection.AddICECandidate(obj)
+}
+
 func (pc nativeRTCPeerConnection) CreateDataChannel(label string) (RTCDataChannel, error) {
 	dc, err := pc.PeerConnection.CreateDataChannel(label, nil)
 	if err != nil {
 		return nil, err
 	}
 	return nativeRTCDataChannel{dc}, nil
+}
+
+func (pc nativeRTCPeerConnection) OnICECandidate(handler func(candidate string)) {
+	pc.PeerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate == nil {
+			handler("")
+		} else {
+			bs, _ := json.Marshal(candidate.ToJSON())
+			handler(string(bs))
+		}
+	})
 }
 
 func (pc nativeRTCPeerConnection) OnICEConnectionStateChange(handler func(state string)) {

@@ -12,9 +12,11 @@ type RTCDataChannel interface {
 
 // An RTCPeerConnection abstracts an RTCPeerConnection
 type RTCPeerConnection interface {
+	AddICECandidate(string) error
 	Close() error
 	CreateDataChannel(label string) (RTCDataChannel, error)
 	OnDataChannel(func(dc RTCDataChannel))
+	OnICECandidate(func(string))
 	OnICEConnectionStateChange(func(string))
 	CreateAnswer() (string, error)
 	CreateOffer() (string, error)

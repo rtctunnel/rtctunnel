@@ -3,10 +3,9 @@
 package peer
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"sync"
 
 	"syscall/js"
 )
@@ -65,20 +64,44 @@ func (dc jsRTCDataChannel) Send(data []byte) error {
 }
 
 type jsRTCPeerConnection struct {
-	object   js.Value
-	iceready chan struct{}
+	object           js.Value
+	negotiationready *Cond
+	closed           *Cond
+}
+
+func (pc *jsRTCPeerConnection) AddICECandidate(candidate string) error {
+	return jsExceptionToGoError(func() {
+		var obj M
+		json.Unmarshal([]byte(candidate), &obj)
+		pc.object.Call("addIceCandidate", obj)
+	})
 }
 
 func (pc *jsRTCPeerConnection) Close() error {
-	if pc.object.Truthy() {
+	pc.closed.Signal()
+	return jsExceptionToGoError(func() {
 		pc.object.Call("close")
-	}
-	return nil
+	})
 }
 
 func (pc *jsRTCPeerConnection) CreateDataChannel(label string) (RTCDataChannel, error) {
 	dc := pc.object.Call("createDataChannel", label)
+	consolelog("RTCPeerConnection::CreateDataChannel::result", dc)
 	return jsRTCDataChannel{dc}, nil
+}
+
+func (pc *jsRTCPeerConnection) OnICECandidate(handler func(string)) {
+	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		candidate := args[0].Get("candidate")
+		consolelog("RTCPeerConnection::onicecandidate", candidate)
+		if candidate.Truthy() {
+			go handler(js.Global().Get("JSON").Call("stringify", candidate).String())
+		} else {
+			go handler("")
+		}
+		return js.Undefined()
+	})
+	pc.object.Set("onicecandidate", f)
 }
 
 func (pc *jsRTCPeerConnection) OnICEConnectionStateChange(handler func(state string)) {
@@ -106,6 +129,7 @@ func (pc *jsRTCPeerConnection) CreateAnswer() (string, error) {
 }
 
 func (pc *jsRTCPeerConnection) CreateOffer() (string, error) {
+	pc.negotiationready.Wait()
 	consolelog("RTCPeerConnection::CreateOffer")
 	promise := pc.object.Call("createOffer")
 	return pc.handleLocalSDPPromise(promise)
@@ -150,12 +174,11 @@ func (pc *jsRTCPeerConnection) handleRemoteSDPPromise(promise js.Value) error {
 
 func (pc *jsRTCPeerConnection) handleLocalSDPPromise(promise js.Value) (string, error) {
 	sdpc := make(chan string, 1)
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	promise.
 		Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 			desc := args[0]
 			go func() {
-				<-pc.iceready
 				sdpc <- pc.object.Get("localDescription").Get("sdp").String()
 			}()
 			return pc.object.Call("setLocalDescription", desc)
@@ -173,6 +196,8 @@ func (pc *jsRTCPeerConnection) handleLocalSDPPromise(promise js.Value) (string, 
 		return sdp, nil
 	case err := <-errc:
 		return "", err
+	case <-pc.closed.C:
+		return "", errors.New("closed")
 	}
 }
 
@@ -185,88 +210,33 @@ func NewRTCPeerConnection() (RTCPeerConnection, error) {
 		},
 	})
 	pc := &jsRTCPeerConnection{
-		object:   obj,
-		iceready: make(chan struct{}),
+		object:           obj,
+		closed:           NewCond(),
+		negotiationready: NewCond(),
 	}
 	obj.Set("onsignalingstatechange", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		consolelog("RTCPeerConnection::onsignalingstatechange", args[0].Get("target").Get("signalingState"))
 		return nil
 	}))
-	obj.Set("onicecandidate", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		consolelog("RTCPeerConnection::onicecandidate", args[0].Get("candidate"))
-		evt := args[0]
-		if !evt.Get("candidate").Truthy() {
-			consolelog("RTCPeerConnection::iceready")
-			close(pc.iceready)
-		}
-		return js.Undefined()
-	}))
 	obj.Set("oniceconnectionstatechange", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		consolelog("RTCPeerConnection::oniceconnectionstatechange", args[0].Get("target").Get("iceConnectionState"))
 		return nil
 	}))
+	obj.Set("onnegotiationneeded", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		consolelog("RTCPeerConnection::onnegotiationneeded", args[0].Get("target"))
+		pc.negotiationready.Signal()
+		return nil
+	}))
+	obj.Set("onconnectionstatechange", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		consolelog("RTCPeerConnection::onconnectionstatechange", args[0].Get("target").Get("connectionState"))
+		cs := args[0].Get("target").Get("connectionState").String()
+		switch cs {
+		case "failed", "disconnected":
+			pc.Close()
+		}
+		return nil
+	}))
 	return pc, nil
-}
-
-type jsPipe struct {
-	ch chan []byte
-
-	mu  sync.Mutex
-	buf []byte
-
-	once   sync.Once
-	closer chan struct{}
-}
-
-func (p *jsPipe) Close() error {
-	p.once.Do(func() {
-		close(p.closer)
-	})
-	return nil
-}
-
-func (p *jsPipe) Read(bs []byte) (int, error) {
-	for {
-		n := p.readbuf(bs)
-		if n > 0 {
-			return n, nil
-		}
-
-		select {
-		case <-p.closer:
-			return 0, io.EOF
-		case buf := <-p.ch:
-			p.buf = buf
-		}
-	}
-}
-
-func (p *jsPipe) readbuf(bs []byte) int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	n := len(p.buf)
-	if n > 0 {
-		copy(bs, p.buf)
-		if n > len(bs) {
-			p.buf = p.buf[len(bs):]
-			return len(bs)
-		} else {
-			p.buf = nil
-			return n
-		}
-	}
-
-	return 0
-}
-
-func (p *jsPipe) Write(bs []byte) (int, error) {
-	select {
-	case <-p.closer:
-		return 0, io.EOF
-	case p.ch <- bs:
-		return len(bs), nil
-	}
 }
 
 func consolelog(args ...interface{}) {

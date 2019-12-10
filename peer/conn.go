@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -97,6 +98,9 @@ func (conn *Conn) closeWithError(err error) error {
 			}
 		}
 	})
+	if conn.closeErr != nil {
+		err = conn.closeErr
+	}
 	return err
 }
 
@@ -117,12 +121,22 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 
 	connected := NewCond()
 
+	iceReady := NewCond()
+	var iceCandidates []string
+
 	var err error
 	conn.pc, err = NewRTCPeerConnection()
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to create webrtc peer connection: %w", err)
 	}
+	conn.pc.OnICECandidate(func(candidate string) {
+		if candidate == "" {
+			iceReady.Signal()
+		} else {
+			iceCandidates = append(iceCandidates, candidate)
+		}
+	})
 	conn.pc.OnICEConnectionStateChange(func(state string) {
 		switch state {
 		case "connected":
@@ -147,30 +161,45 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 			return nil, conn.closeWithError(fmt.Errorf("error creating webrtc offer: %w", err))
 		}
 
-		err = signal.Send(keypair, peerPublicKey, []byte(offer), options...)
-		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error sending webrtc offer: %w", err))
+		// wait for the ice candidates
+		select {
+		case <-iceReady.C:
+		case <-conn.closeCond.C:
+			return nil, conn.closeWithError(context.Canceled)
 		}
 
-		answerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
+		err = sendSignal(keypair, peerPublicKey, &SignalMessage{
+			SDP:           offer,
+			ICECandidates: iceCandidates,
+		}, options...)
+		if err != nil {
+			return nil, conn.closeWithError(fmt.Errorf("error sending offer: %w", err))
+		}
+
+		answer, err := recvSignal(keypair, peerPublicKey, options...)
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error receiving webrtc answer: %w", err))
 		}
-		answerSDP := string(answerSDPBytes)
 
-		err = conn.pc.SetAnswer(answerSDP)
+		err = conn.pc.SetAnswer(answer.SDP)
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error setting webrtc answer: %w", err))
 		}
 
+		for _, candidate := range answer.ICECandidates {
+			err = conn.pc.AddICECandidate(candidate)
+			if err != nil {
+				return nil, conn.closeWithError(fmt.Errorf("error adding ice candidate: %w", err))
+			}
+		}
+
 	} else {
-		offerSDPBytes, err := signal.Recv(keypair, peerPublicKey, options...)
+		offer, err := recvSignal(keypair, peerPublicKey, options...)
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error receiving webrtc offer: %w", err))
 		}
-		offerSDP := string(offerSDPBytes)
 
-		err = conn.pc.SetOffer(offerSDP)
+		err = conn.pc.SetOffer(offer.SDP)
 		if err != nil {
 			return nil, conn.closeWithError(fmt.Errorf("error setting webrtc offer: %w", err))
 		}
@@ -180,9 +209,26 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 			return nil, conn.closeWithError(fmt.Errorf("error creating webrtc answer: %w", err))
 		}
 
-		err = signal.Send(keypair, peerPublicKey, []byte(answer), options...)
+		for _, candidate := range offer.ICECandidates {
+			err = conn.pc.AddICECandidate(candidate)
+			if err != nil {
+				return nil, conn.closeWithError(fmt.Errorf("error adding ice candidate: %w", err))
+			}
+		}
+
+		// wait for the ice candidates
+		select {
+		case <-iceReady.C:
+		case <-conn.closeCond.C:
+			return nil, conn.closeWithError(context.Canceled)
+		}
+
+		err = sendSignal(keypair, peerPublicKey, &SignalMessage{
+			SDP:           answer,
+			ICECandidates: iceCandidates,
+		}, options...)
 		if err != nil {
-			return nil, conn.closeWithError(fmt.Errorf("error sending webrtc answer: %w", err))
+			return nil, conn.closeWithError(fmt.Errorf("error marshaling signal message: %w", err))
 		}
 	}
 
@@ -193,4 +239,37 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 	}
 
 	return conn, nil
+}
+
+type SignalMessage struct {
+	SDP           string
+	ICECandidates []string
+}
+
+func recvSignal(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Option) (*SignalMessage, error) {
+	bs, err := signal.Recv(keypair, peerPublicKey, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	var msg SignalMessage
+	err = json.Unmarshal(bs, &msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &msg, nil
+}
+
+func sendSignal(keypair crypt.KeyPair, peerPublicKey crypt.Key, msg *SignalMessage, options ...signal.Option) error {
+	bs, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	err = signal.Send(keypair, peerPublicKey, bs, options...)
+	if err != nil {
+		return err
+	}
+	return nil
 }
