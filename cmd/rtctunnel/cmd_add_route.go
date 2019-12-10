@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/crypt"
-	"github.com/apex/log"
 	"github.com/spf13/cobra"
 )
 
@@ -16,16 +16,16 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg, err := LoadConfig(options.configFile)
 			if err != nil {
-				log.WithError(err).Fatal("failed to load config")
+				log.Fatal().Err(err).Msg("failed to load config")
 			}
 
 			if localPort == 0 {
 				cmd.Usage()
-				log.Fatal("local-port is required")
+				log.Fatal().Msg("local-port is required")
 			}
 			if remotePort == 0 {
 				cmd.Usage()
-				log.Fatal("remote-port is required")
+				log.Fatal().Msg("remote-port is required")
 			}
 			if localPeer == "" {
 				localPeer = cfg.KeyPair.Public.String()
@@ -33,33 +33,34 @@ func init() {
 			localPeerKey, err := crypt.NewKey(localPeer)
 			if err != nil {
 				cmd.Usage()
-				log.WithError(err).Fatal("invalid local peer key")
+				log.Fatal().Err(err).Msg("invalid local peer key")
 			}
 			if remotePeer == "" {
 				cmd.Usage()
-				log.Fatal("remote-peer is required")
+				log.Fatal().Msg("remote-peer is required")
 			}
 			remotePeerKey, err := crypt.NewKey(remotePeer)
 			if err != nil {
 				cmd.Usage()
-				log.WithError(err).Fatal("invalid remote peer key")
+				log.Fatal().Err(err).Msg("invalid remote peer key")
 			}
 
-			log.WithField("config-file", options.configFile).
-				WithField("local-port", localPort).
-				WithField("local-peer", localPeer).
-				WithField("remote-peer", remotePeer).
-				WithField("remote-port", remotePort).
-				Info("adding route")
+			log.Info().
+				Str("config-file", options.configFile).
+				Int("local-port", localPort).
+				Str("local-peer", localPeer).
+				Str("remote-peer", remotePeer).
+				Int("remote-port", remotePort).
+				Msg("adding route")
 
 			err = cfg.AddRoute(localPort, localPeerKey, remotePeerKey, remotePort)
 			if err != nil {
-				log.WithError(err).Fatal("failed to add route")
+				log.Fatal().Err(err).Msg("failed to add route")
 			}
 
 			err = cfg.Save(options.configFile)
 			if err != nil {
-				log.WithError(err).Fatal("failed to save config")
+				log.Fatal().Err(err).Msg("failed to save config")
 			}
 		},
 	}

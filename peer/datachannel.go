@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 )
 
 var ErrClosedByPeer = errors.New("closed by peer")
@@ -54,8 +54,8 @@ func WrapDataChannel(rtcDataChannel RTCDataChannel) (*DataChannel, error) {
 		dc.openCond.Signal()
 	})
 	dc.dc.OnMessage(func(data []byte) {
-		log.WithField("data", data).
-			Debug("datachannel message")
+		log.Debug().Bytes("data", data).
+			Msg("datachannel message")
 
 		if rw != nil {
 			_, err := rw.Write(data)

@@ -3,7 +3,7 @@ package channels
 import (
 	"sync"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 )
 
 func init() {
@@ -31,16 +31,13 @@ func newMemoryChannel(addr string) (*memoryChannel, error) {
 }
 
 func (mch *memoryChannel) Send(key, data string) error {
-	log.WithField("key", key).
-		WithField("data", data).
-		Debug("[MemoryChannel] sending")
+	log.Debug().Str("key", key).Str("data", data).Msg("[MemoryChannel] sending")
 	mch.getChannel(key) <- data
 	return nil
 }
 
 func (mch *memoryChannel) Recv(key string) (data string, err error) {
-	log.WithField("key", key).
-		Debug("[MemoryChannel] receiving")
+	log.Debug().Str("key", key).Msg("[MemoryChannel] receiving")
 	data = <-mch.getChannel(key)
 	return data, nil
 }
