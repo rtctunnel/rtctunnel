@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/channels"
 )
 
@@ -41,10 +41,7 @@ func New(url string) channels.Channel {
 
 // Recv receives a message at the given key.
 func (c *operatorChannel) Recv(key string) (data string, err error) {
-	log.WithFields(log.Fields{
-		"url": c.url,
-		"key": key,
-	}).Debug("[operator] receive")
+	log.Debug().Str("url", c.url).Str("key", key).Msg("[operator] receive")
 
 	uv := url.Values{
 		"address": {key},
@@ -53,13 +50,13 @@ func (c *operatorChannel) Recv(key string) (data string, err error) {
 		resp, err := DefaultClient.Get(c.url + "/sub?" + uv.Encode())
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				log.Warn("[operator] timed-out, retrying")
+				log.Warn().Msg("[operator] timed-out, retrying")
 				continue
 			}
 			return "", err
 		}
 		if resp.StatusCode == http.StatusGatewayTimeout {
-			log.Warn("[operator] timed-out, retrying")
+			log.Warn().Msg("[operator] timed-out, retrying")
 			resp.Body.Close()
 			continue
 		}
@@ -74,10 +71,7 @@ func (c *operatorChannel) Recv(key string) (data string, err error) {
 			return "", err
 		}
 
-		log.WithFields(log.Fields{
-			"key":  key,
-			"data": string(bs),
-		}).Info("[operator] received")
+		log.Debug().Str("key", key).Str("data", string(bs)).Msg("[operator] received")
 
 		return string(bs), nil
 	}
@@ -85,11 +79,7 @@ func (c *operatorChannel) Recv(key string) (data string, err error) {
 
 // Send sends a message to the given key with the given data.
 func (c *operatorChannel) Send(key, data string) error {
-	log.WithFields(log.Fields{
-		"url":  c.url,
-		"key":  key,
-		"data": data,
-	}).Debug("[operator] send")
+	log.Debug().Str("url", c.url).Str("key", key).Str("data", data).Msg("[operator] send")
 
 	uv := url.Values{
 		"address": {key},
@@ -106,7 +96,7 @@ func (c *operatorChannel) Send(key, data string) error {
 			continue
 		}
 
-		log.WithField("status_code", resp.StatusCode).WithField("status", resp.Status).Info("[operator] sent")
+		log.Debug().Int("status_code", resp.StatusCode).Str("status", resp.Status).Msg("[operator] sent")
 
 		ioutil.ReadAll(resp.Body)
 		resp.Body.Close()

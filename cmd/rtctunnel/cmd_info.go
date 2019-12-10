@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +14,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg, err := LoadConfig(options.configFile)
 			if err != nil {
-				log.WithError(err).Fatal("failed to load config file")
+				log.Fatal().Err(err).Msg("failed to load config file")
 			}
 
 			fmt.Printf("public-key: %s\n", cfg.KeyPair.Public)

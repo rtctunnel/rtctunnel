@@ -6,9 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/apex/log"
-
 	"github.com/gopherjs/gopherjs/js"
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/ext/js/localstorage"
 	"github.com/rtctunnel/rtctunnel/peer"
@@ -75,7 +74,7 @@ func onsubmitpeerkey(evt *js.Object) {
 	value := js.Global.Get("document").Call("getElementById", "peerPublicKey").Get("value").String()
 	peerPublicKey, err := crypt.NewKey(value)
 	if err != nil {
-		log.WithError(err).Fatal("invalid peer key")
+		log.Fatal().Err(err).Msg("invalid peer key")
 		return
 	}
 	localstorage.Set(localStoragePeerKey, peerPublicKey.String())
@@ -92,7 +91,7 @@ func onsubmitpeerkey(evt *js.Object) {
 func openConnection(peerPublicKey crypt.Key) {
 	conn, err := peer.Open(keypair, peerPublicKey)
 	if err != nil {
-		log.WithError(err).Fatal("failed to create peer connection")
+		log.Fatal().Err(err).Msg("failed to create peer connection")
 		return
 	}
 	defer conn.Close()
@@ -106,7 +105,7 @@ func openConnection(peerPublicKey crypt.Key) {
 	}
 	resp, err := client.Get("http://peer/")
 	if err != nil {
-		log.WithError(err).Fatal("failed to make http request")
+		log.Fatal().Err(err).Msg("failed to make http request")
 		return
 	}
 	defer resp.Body.Close()

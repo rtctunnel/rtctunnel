@@ -3,8 +3,8 @@ package main
 import (
 	"path/filepath"
 
-	"github.com/apex/log"
 	"github.com/kirsle/configdir"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ func defaultConfigFile() string {
 	dir := configdir.LocalConfig("rtctunnel")
 	err := configdir.MakePath(dir)
 	if err != nil {
-		log.Fatal("failed to create config folder")
+		log.Fatal().Msg("failed to create config folder")
 	}
 	return filepath.Join(dir, "rtctunnel.yaml")
 }

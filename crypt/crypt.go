@@ -5,8 +5,6 @@ import (
 	"errors"
 	"io"
 
-	"github.com/apex/log"
-
 	"github.com/mr-tron/base58"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -83,12 +81,6 @@ func (pair *KeyPair) Encrypt(peerPublicKey Key, data []byte) []byte {
 	k2 := [KeySize]byte(pair.Private)
 	sealed := box.Seal(nil, data, &nonce, &k1, &k2)
 
-	log.WithField("[KeyPair.Encrypt] nonce", nonce[:]).
-		WithField("sealed", sealed).
-		WithField("public-key", pair.Public).
-		WithField("peer-public-key", peerPublicKey).
-		Debug("encrypt")
-
 	var result []byte
 	result = append(result, nonce[:]...)
 	result = append(result, sealed...)
@@ -107,20 +99,8 @@ func (pair *KeyPair) Decrypt(peerPublicKey Key, data []byte) ([]byte, error) {
 	k2 := [KeySize]byte(pair.Private)
 	opened, ok := box.Open(nil, sealed, &nonce, &k1, &k2)
 	if !ok {
-		log.WithFields(log.Fields{
-			"nonce":           nonce[:],
-			"sealed":          sealed,
-			"public-key":      pair.Public,
-			"peer-public-key": peerPublicKey,
-		}).Warn("[KeyPair.Decrypt] invalid message")
 		return nil, errors.New("invalid message")
 	}
-
-	log.WithField("[KeyPair.Decrypt] nonce", nonce[:]).
-		WithField("sealed", sealed).
-		WithField("public-key", pair.Public).
-		WithField("peer-public-key", peerPublicKey).
-		Debug("decrypt")
 
 	return opened, nil
 }

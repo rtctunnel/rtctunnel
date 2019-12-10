@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/crypt"
-	"github.com/apex/log"
 	"github.com/spf13/cobra"
 )
 
@@ -13,21 +13,22 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg, err := LoadConfig(options.configFile)
 			if err == nil {
-				log.WithField("config-file", options.configFile).
-					Fatal("config file already exists. remove it if you want to re-initialize")
+				log.Fatal().
+					Str("config-file", options.configFile).
+					Msg("config file already exists. remove it if you want to re-initialize")
 			}
 
 			cfg = new(Config)
 			cfg.KeyPair = crypt.GenerateKeyPair()
 
-			log.WithFields(log.Fields{
-				"public-key":  cfg.KeyPair.Public,
-				"config-file": options.configFile,
-			}).Info("saving config file")
+			log.Info().
+				Str("public-key", cfg.KeyPair.Public.String()).
+				Str("config-file", options.configFile).
+				Msg("saving config file")
 
 			err = cfg.Save(options.configFile)
 			if err != nil {
-				log.WithError(err).Fatal("failed to save config file")
+				log.Fatal().Err(err).Msg("failed to save config file")
 			}
 		},
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/rtctunnel/rtctunnel/signal"
 )
@@ -33,28 +33,29 @@ func (conn *Conn) Accept() (stream net.Conn, port int, err error) {
 		lbl := dc.Label()
 		idx := strings.LastIndexByte(lbl, ':')
 		if idx < 0 {
-			log.WithField("label", lbl).Info("ignoring datachannel")
+			log.Info().Str("label", lbl).Msg("ignoring datachannel")
 			continue
 		}
 		name := lbl[:idx]
 		port, err := strconv.Atoi(lbl[idx+1:])
 		if err != nil || name != "rtctunnel" {
-			log.WithField("label", lbl).Info("ignoring datachannel")
+			log.Info().Str("label", lbl).Msg("ignoring datachannel")
 			continue
 		}
 
 		stream, err := WrapDataChannel(dc)
 		if errors.Is(err, ErrClosedByPeer) {
-			log.WithField("label", lbl).Info("datachannel was closed by peer")
+			log.Info().Str("label", lbl).Msg("ignoring datachannel: closed by peer")
 			continue
 		} else if err != nil {
 			dc.Close()
 			return nil, 0, err
 		}
 
-		log.WithField("peer", conn.peerPublicKey).
-			WithField("port", port).
-			Info("accepted connection")
+		log.Info().
+			Str("peer", conn.peerPublicKey.String()).
+			Int("port", port).
+			Msg("accepted connection")
 
 		return stream, port, nil
 	}
@@ -74,9 +75,10 @@ func (conn *Conn) Open(port int) (stream net.Conn, err error) {
 		return nil, err
 	}
 
-	log.WithField("peer", conn.peerPublicKey).
-		WithField("port", port).
-		Info("opened connection")
+	log.Info().
+		Str("peer", conn.peerPublicKey.String()).
+		Int("port", port).
+		Msg("opened connection")
 
 	return stream, err
 }
@@ -109,8 +111,9 @@ func Open(keypair crypt.KeyPair, peerPublicKey crypt.Key, options ...signal.Opti
 		incoming: make(chan RTCDataChannel, 1),
 	}
 
-	log.WithField("peer", peerPublicKey).
-		Info("creating webrtc peer connection")
+	log.Info().
+		Str("peer", peerPublicKey.String()).
+		Msg("creating webrtc peer connection")
 
 	connected := NewCond()
 
