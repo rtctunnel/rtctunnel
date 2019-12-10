@@ -3,7 +3,6 @@
 package peer
 
 import (
-	"io"
 	"strings"
 
 	webrtc "github.com/pion/webrtc/v2"
