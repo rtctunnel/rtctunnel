@@ -1,6 +1,7 @@
 module github.com/rtctunnel/rtctunnel
 
 require (
+	github.com/gorilla/websocket v1.4.1
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/mr-tron/base58 v1.1.2
 	github.com/onsi/gomega v1.5.0 // indirect

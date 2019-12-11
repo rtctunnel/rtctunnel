@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/kirsle/configdir"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -11,15 +12,25 @@ import (
 var (
 	options struct {
 		configFile string
+		logLevel   string
 	}
 	rootCmd = &cobra.Command{
 		Use:   "rtctunnel",
 		Short: "RTCTunnel creates network tunnels over WebRTC",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			lvl, err := zerolog.ParseLevel(options.logLevel)
+			if err != nil {
+				return err
+			}
+			zerolog.SetGlobalLevel(lvl)
+			return nil
+		},
 	}
 )
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&options.configFile, "config-file", defaultConfigFile(), "the config file")
+	rootCmd.PersistentFlags().StringVar(&options.logLevel, "log-level", "info", "the log level to use")
 }
 
 func defaultConfigFile() string {
