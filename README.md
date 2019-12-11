@@ -80,4 +80,4 @@ routes: []
 signalchannel: operator://localhost:8000
 ```
 
-The default signal channel is `operator://operator.rtctunnel.com`, a custom signaling server whose source code can be found at [github.com/rtctunnel/operator](https://github.com/rtctunnel/operator). Currently no other signaling schemes are defined.
+The default signal channel is `apprtc://` which uses a websocket server for [appr.tc](appr.tc).
