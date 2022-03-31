@@ -3,23 +3,24 @@
 RTCTunnel builds network tunnels over WebRTC.
 
 # WARNING:
-This is a proof of concept and should NOT be used in production. Errors/Exceptions like disconnects and invalid data are not well handled, and result will crash the system.
+
+This is a proof of concept and should NOT be used in production. Errors/Exceptions like disconnects and invalid data are not well handled, and may result in panics.
 
 An overview of the application and how and why it was built is available here: [RTCTunnel: Building a WebRTC Proxy with Go](http://www.doxsey.net/blog/rtctunnel--building-a-webrtc-proxy-with-go).
 
 ## Installation
 
-RTCTunnel can be installed via `go get`:
+RTCTunnel can be installed via `go install`:
 
 ```bash
-env GO111MODULE=on go get github.com/rtctunnel/rtctunnel/cmd/rtctunnel
+go install github.com/rtctunnel/rtctunnel/cmd/rtctunnel@latest
 ```
 
 Or downloaded from the releases page (for linux).
 
 ## Usage
 
-RTCTunnel creates a network tunnel over WebRTC between two peers. Those peers are identified by a public key. 
+RTCTunnel creates a network tunnel over WebRTC between two peers. Those peers are identified by a public key.
 
 To use RTCTunnel first create a config with:
 
@@ -57,7 +58,7 @@ Typically it would be run in the background.
 
 A docker-compose example is available in [examples/redis](https://github.com/rtctunnel/rtctunnel/tree/master/examples/redis).
 
-## Configuration 
+## Configuration
 
 Configuration is stored in a yaml file based on [github.com/kirsle/configdir](https://github.com/kirsle/configdir):
 
