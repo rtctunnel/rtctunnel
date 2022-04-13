@@ -4,7 +4,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/mr-tron/base58 v1.2.0
-	github.com/pion/webrtc/v3 v3.1.27
+	github.com/pion/webrtc/v3 v3.1.28
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.26.1
 	github.com/spf13/cobra v1.4.0
