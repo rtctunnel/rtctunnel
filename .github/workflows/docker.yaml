@@ -1,20 +1,31 @@
 name: Docker
-on: ["push"]
+
+on:
+  push:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - name: Build
-        run: docker build --tag rtctunnel:latest .
-      - name: Release
-        run: |
-          DOCKER_TAG="quay.io/rtctunnel/rtctunnel:$(basename "$GITHUB_REF")"
-          echo "releasing username=$DOCKER_USERNAME tag=$DOCKER_TAG"
-          echo "$DOCKER_PASSWORD" | docker login --username="$DOCKER_USERNAME" --password-stdin quay.io
-          docker tag rtctunnel:latest "$DOCKER_TAG"
-          docker push "$DOCKER_TAG"
-        env:
-          DOCKER_USERNAME: rtctunnel+github
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          GITHUB_REF: ${{ github.ref }}
+      - uses: actions/checkout@v3
+
+      - name: Docker Metadata
+        id: metadata
+        uses: docker/metadata-action@v4
+        with:
+          images: quay.io/rtctunnel/rtctunnel
+
+      - name: Docker Login
+        uses: docker/login-action@v2
+        with:
+          registry: quay.io
+          username: rtctunnel+github
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
