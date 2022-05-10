@@ -86,35 +86,69 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 			continue
 		}
 
-		allowed := false
+		var route *Route
 		for _, r := range cfg.Routes {
 			if r.RemotePeer == cfg.KeyPair.Public && r.RemotePort == port {
-				allowed = true
+				route = &r
 				break
 			}
 		}
 
-		if !allowed {
+		if route == nil {
 			log.Warn().Int("port", port).Msg("remote peer attempted to connect to disallowed port")
 			remote.Close()
 			continue
 		}
 
-		local, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
-		if err != nil {
-			log.Warn().Err(err).Msg("failed to establish connection to local port")
-			remote.Close()
-			continue
+		switch route.Type {
+		case RouteTypeTCP, "":
+			acceptRemoteTCP(pc, *route, remote)
+		case RouteTypeUDP:
+			acceptRemoteUDP(pc, *route, remote)
+		default:
+			log.Fatal().Str("type", string(route.Type)).Msg("invalid route type")
 		}
 
-		go joinConns(local, remote)
 	}
+}
+
+func acceptRemoteTCP(pc *peer.Conn, route Route, remote net.Conn) {
+	local, err := net.Dial("tcp", net.JoinHostPort(options.bindAddress, fmt.Sprint(route.RemotePort)))
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to establish connection to local port")
+		remote.Close()
+	}
+	go joinConns(local, remote)
+}
+
+func acceptRemoteUDP(pc *peer.Conn, route Route, remote net.Conn) {
+	local, err := net.DialUDP("udp", nil, &net.UDPAddr{
+		IP:   net.ParseIP(options.bindAddress),
+		Port: route.RemotePort,
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to establish connection to local port")
+		remote.Close()
+		return
+	}
+	go joinConns(local, remote)
 }
 
 func localListener(pc *peer.Conn, route Route) {
 	log.Info().Interface("route", route).Msg("starting local listener")
 
-	li, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(route.LocalPort)))
+	switch route.Type {
+	case RouteTypeTCP, "":
+		localTCPListener(pc, route)
+	case RouteTypeUDP:
+		localUDPListener(pc, route)
+	default:
+		log.Fatal().Str("type", string(route.Type)).Msg("invalid route type")
+	}
+}
+
+func localTCPListener(pc *peer.Conn, route Route) {
+	li, err := net.Listen("tcp", net.JoinHostPort(options.bindAddress, fmt.Sprint(route.LocalPort)))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create listener")
 	}
@@ -139,6 +173,24 @@ func localListener(pc *peer.Conn, route Route) {
 
 		go joinConns(local, remote)
 	}
+}
+
+func localUDPListener(pc *peer.Conn, route Route) {
+	local, err := net.ListenUDP("udp", &net.UDPAddr{
+		IP:   net.ParseIP(options.bindAddress),
+		Port: route.LocalPort,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("error listening for UDP packets")
+	}
+
+	remote, err := pc.Open(route.RemotePort)
+	if err != nil {
+		_ = local.Close()
+		log.Fatal().Err(err).Msg("error opening remote connection")
+	}
+
+	go joinConns(local, remote)
 }
 
 func joinConns(c1, c2 net.Conn) {

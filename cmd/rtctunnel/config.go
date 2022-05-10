@@ -1,11 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/rtctunnel/rtctunnel/crypt"
 	yaml "gopkg.in/yaml.v2"
+)
+
+type RouteType string
+
+const (
+	RouteTypeTCP RouteType = "TCP"
+	RouteTypeUDP RouteType = "UDP"
 )
 
 // A Route is a route from a local port to a remote port over a webrtc connection.
@@ -14,13 +23,14 @@ type Route struct {
 	LocalPeer  crypt.Key
 	RemotePeer crypt.Key
 	RemotePort int
+	Type       RouteType
 }
 
 // A Config is the configuration for the RTCTunnel.
 type Config struct {
 	KeyPair       crypt.KeyPair
-	Routes        []Route
-	SignalChannel string `yaml:"signalchannel,omitempty"`
+	Routes        []Route `json:",omitempty"`
+	SignalChannel string  `json:"signalchannel,omitempty"`
 }
 
 // LoadConfig loads the config off of the disk.
@@ -37,22 +47,30 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
-
-	err = yaml.Unmarshal(bs, &cfg)
-	if err != nil {
-		return nil, err
+	switch filepath.Ext(path) {
+	case ".json":
+		err = json.Unmarshal(bs, &cfg)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		err = yaml.Unmarshal(bs, &cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &cfg, nil
 }
 
 // AddRoute adds a route to the config. It also validates the route and removes duplicates.
-func (cfg *Config) AddRoute(localPort int, localPeer, remotePeer crypt.Key, remotePort int) error {
+func (cfg *Config) AddRoute(localPort int, localPeer, remotePeer crypt.Key, remotePort int, routeType RouteType) error {
 	nr := Route{
 		LocalPort:  localPort,
 		LocalPeer:  localPeer,
 		RemotePeer: remotePeer,
 		RemotePort: remotePort,
+		Type:       routeType,
 	}
 
 	for _, r := range cfg.Routes {
@@ -66,7 +84,14 @@ func (cfg *Config) AddRoute(localPort int, localPeer, remotePeer crypt.Key, remo
 
 // Save saves the config file
 func (cfg *Config) Save(path string) error {
-	bs, err := yaml.Marshal(cfg)
+	var bs []byte
+	var err error
+	switch filepath.Ext(path) {
+	case ".json":
+		bs, err = json.Marshal(cfg)
+	default:
+		bs, err = yaml.Marshal(cfg)
+	}
 	if err != nil {
 		return err
 	}
