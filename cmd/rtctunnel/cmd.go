@@ -11,8 +11,9 @@ import (
 
 var (
 	options struct {
-		configFile string
-		logLevel   string
+		bindAddress string
+		configFile  string
+		logLevel    string
 	}
 	rootCmd = &cobra.Command{
 		Use:   "rtctunnel",
@@ -29,6 +30,7 @@ var (
 )
 
 func init() {
+	rootCmd.PersistentFlags().StringVar(&options.bindAddress, "bind-address", "127.0.0.1", "the ip address to bind")
 	rootCmd.PersistentFlags().StringVar(&options.configFile, "config-file", defaultConfigFile(), "the config file")
 	rootCmd.PersistentFlags().StringVar(&options.logLevel, "log-level", "info", "the log level to use")
 }

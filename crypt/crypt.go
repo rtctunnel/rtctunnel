@@ -2,6 +2,7 @@ package crypt
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"io"
 
@@ -46,6 +47,27 @@ func (key Key) Valid() bool {
 
 func (key Key) String() string {
 	return base58.Encode(key[:])
+}
+
+func (key Key) MarshalJSON() ([]byte, error) {
+	bs, err := json.Marshal(key.String())
+	if err != nil {
+		return nil, err
+	}
+	return bs, nil
+}
+
+func (key *Key) UnmarshalJSON(data []byte) error {
+	var raw string
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+	*key, err = NewKey(raw)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (key Key) MarshalYAML() (interface{}, error) {
