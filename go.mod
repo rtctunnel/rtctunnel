@@ -8,7 +8,7 @@ require (
 	github.com/pion/webrtc/v3 v3.1.41
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.27.0
-	github.com/spf13/cobra v1.4.0
+	github.com/spf13/cobra v1.5.0
 	github.com/stretchr/testify v1.7.4
 	golang.org/x/crypto v0.0.0-20220516162934-403b01795ae8
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
