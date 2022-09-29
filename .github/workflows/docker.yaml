@@ -4,26 +4,29 @@ on:
   push:
 
 jobs:
-  build:
+  docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+        with:
+          fetch-depth: 0
 
       - name: Docker Metadata
         id: metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@69f6fc9d46f2f8bf0d5491e4aabe0bb8c6a4678a
         with:
           images: quay.io/rtctunnel/rtctunnel
 
       - name: Docker Login
-        uses: docker/login-action@v2
+        uses: docker/login-action@49ed152c8eca782a232dede0303416e8f356c37b
         with:
           registry: quay.io
           username: rtctunnel+github
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and Push
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@c84f38281176d4c9cdb1626ffafcd6b3911b5d94
         with:
           context: .
           push: true

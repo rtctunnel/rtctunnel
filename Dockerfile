@@ -1,4 +1,4 @@
-FROM golang:1.13.4-alpine3.10 as builder
+FROM golang:1.19-alpine as builder
 RUN apk --no-cache add git gcc musl-dev
 
 ENV GO111MODULE=on
