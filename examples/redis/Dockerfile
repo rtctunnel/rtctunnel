@@ -1,6 +1,6 @@
-FROM alpine:latest 
+FROM alpine:3.16 
 
-RUN apk add bash curl redis python py-pip jq
+RUN apk add bash curl redis python3 py3-pip jq
 RUN pip install yq
 
 RUN curl -L https://github.com/rtctunnel/rtctunnel/releases/download/v0.3.0/rtctunnel_linux_amd64.tar.gz \
