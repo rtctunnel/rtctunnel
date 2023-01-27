@@ -7,7 +7,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/pion/webrtc/v3 v3.1.50
 	github.com/pkg/errors v0.9.1
-	github.com/rs/zerolog v1.28.0
+	github.com/rs/zerolog v1.29.0
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/crypto v0.0.0-20221010152910-d6f0a8c073c2
