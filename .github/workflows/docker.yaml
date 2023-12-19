@@ -14,7 +14,7 @@ jobs:
 
       - name: Docker Metadata
         id: metadata
-        uses: docker/metadata-action@31cebacef4805868f9ce9a0cb03ee36c32df2ac4
+        uses: docker/metadata-action@9dc751fe249ad99385a2583ee0d084c400eee04e
         with:
           images: quay.io/rtctunnel/rtctunnel
 
