@@ -1,4 +1,5 @@
-//+build js
+//go:build js
+// +build js
 
 package peer
 
@@ -179,7 +180,7 @@ func (pc *jsRTCPeerConnection) handleLocalSDPPromise(promise js.Value) (string, 
 		Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 			desc := args[0]
 			go func() {
-				sdpc <- pc.object.Get("localDescription").Get("sdp").String()
+				sdpc <- desc.Get("sdp").String()
 			}()
 			return pc.object.Call("setLocalDescription", desc)
 		})).
