@@ -5,7 +5,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/mr-tron/base58 v1.2.0
-	github.com/pion/webrtc/v3 v3.2.42
+	github.com/pion/webrtc/v3 v3.2.47
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.8.1
@@ -22,7 +22,7 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pion/datachannel v1.5.5 // indirect
 	github.com/pion/dtls/v2 v2.2.7 // indirect
-	github.com/pion/ice/v2 v2.3.24 // indirect
+	github.com/pion/ice/v2 v2.3.29 // indirect
 	github.com/pion/interceptor v0.1.25 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/mdns v0.0.12 // indirect
