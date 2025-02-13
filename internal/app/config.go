@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"encoding/json"
@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rtctunnel/rtctunnel/crypt"
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/rtctunnel/rtctunnel/internal/crypt"
 )
 
 type RouteType string

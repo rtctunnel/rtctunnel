@@ -1,4 +1,5 @@
-//+build js
+//go:build js
+// +build js
 
 package main
 
@@ -11,9 +12,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/rtctunnel/rtctunnel/crypt"
+
 	"github.com/rtctunnel/rtctunnel/ext/js/localstorage"
-	"github.com/rtctunnel/rtctunnel/peer"
+	"github.com/rtctunnel/rtctunnel/internal/crypt"
+	"github.com/rtctunnel/rtctunnel/internal/peer"
 )
 
 const (

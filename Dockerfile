@@ -13,7 +13,7 @@ RUN go mod download
 
 COPY . .
 RUN go build -v -ldflags '-extldflags "-static"' \
-    -o /usr/local/bin/rtctunnel ./cmd/rtctunnel
+    -o /usr/local/bin/rtctunnel ./main.g
 
 FROM alpine:latest
 RUN apk add --no-cache --update \

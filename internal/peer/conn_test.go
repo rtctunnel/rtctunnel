@@ -5,11 +5,12 @@ import (
 	"io"
 	"testing"
 
-	"github.com/rtctunnel/rtctunnel/channels"
-	"github.com/rtctunnel/rtctunnel/crypt"
-	"github.com/rtctunnel/rtctunnel/signal"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/rtctunnel/rtctunnel/channels"
+	"github.com/rtctunnel/rtctunnel/internal/crypt"
+	"github.com/rtctunnel/rtctunnel/internal/signal"
 )
 
 func TestConn(t *testing.T) {

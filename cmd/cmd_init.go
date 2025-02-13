@@ -1,24 +1,26 @@
-package main
+package cmd
 
 import (
 	"github.com/rs/zerolog/log"
-	"github.com/rtctunnel/rtctunnel/crypt"
 	"github.com/spf13/cobra"
+
+	"github.com/rtctunnel/rtctunnel/internal/app"
+	"github.com/rtctunnel/rtctunnel/internal/crypt"
 )
 
-func init() {
-	initCmd := &cobra.Command{
+var (
+	initCmd = &cobra.Command{
 		Use:   "init",
 		Short: "Creates a new RTCTunnel config and stores it to disk",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg, err := LoadConfig(options.configFile)
+			cfg, err := app.LoadConfig(options.configFile)
 			if err == nil {
 				log.Fatal().
 					Str("config-file", options.configFile).
 					Msg("config file already exists. remove it if you want to re-initialize")
 			}
 
-			cfg = new(Config)
+			cfg = new(app.Config)
 			cfg.KeyPair = crypt.GenerateKeyPair()
 
 			log.Info().
@@ -32,6 +34,4 @@ func init() {
 			}
 		},
 	}
-	rootCmd.AddCommand(initCmd)
-
-}
+)

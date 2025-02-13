@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -9,20 +9,22 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
+
 	"github.com/rtctunnel/rtctunnel/channels"
 	_ "github.com/rtctunnel/rtctunnel/channels/operator"
-	"github.com/rtctunnel/rtctunnel/crypt"
-	"github.com/rtctunnel/rtctunnel/peer"
-	"github.com/rtctunnel/rtctunnel/signal"
-	"github.com/spf13/cobra"
+	"github.com/rtctunnel/rtctunnel/internal/app"
+	"github.com/rtctunnel/rtctunnel/internal/crypt"
+	"github.com/rtctunnel/rtctunnel/internal/peer"
+	"github.com/rtctunnel/rtctunnel/internal/signal"
 )
 
-func init() {
-	runCmd := &cobra.Command{
+var (
+	runCmd = &cobra.Command{
 		Use:   "run",
 		Short: "run the rtctunnel",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg, err := LoadConfig(options.configFile)
+			cfg, err := app.LoadConfig(options.configFile)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to load config file")
 			}
@@ -75,10 +77,9 @@ func init() {
 			select {}
 		},
 	}
-	rootCmd.AddCommand(runCmd)
-}
+)
 
-func acceptRemote(cfg *Config, pc *peer.Conn) {
+func acceptRemote(cfg *app.Config, pc *peer.Conn) {
 	for {
 		remote, port, err := pc.Accept()
 		if err != nil {
@@ -86,7 +87,7 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 			continue
 		}
 
-		var route *Route
+		var route *app.Route
 		for _, r := range cfg.Routes {
 			if r.RemotePeer == cfg.KeyPair.Public && r.RemotePort == port {
 				route = &r
@@ -101,9 +102,9 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 		}
 
 		switch route.Type {
-		case RouteTypeTCP, "":
+		case app.RouteTypeTCP, "":
 			acceptRemoteTCP(pc, *route, remote)
-		case RouteTypeUDP:
+		case app.RouteTypeUDP:
 			acceptRemoteUDP(pc, *route, remote)
 		default:
 			log.Fatal().Str("type", string(route.Type)).Msg("invalid route type")
@@ -112,7 +113,7 @@ func acceptRemote(cfg *Config, pc *peer.Conn) {
 	}
 }
 
-func acceptRemoteTCP(pc *peer.Conn, route Route, remote net.Conn) {
+func acceptRemoteTCP(pc *peer.Conn, route app.Route, remote net.Conn) {
 	local, err := net.Dial("tcp", net.JoinHostPort(options.bindAddress, fmt.Sprint(route.RemotePort)))
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to establish connection to local port")
@@ -121,7 +122,7 @@ func acceptRemoteTCP(pc *peer.Conn, route Route, remote net.Conn) {
 	go joinConns(local, remote)
 }
 
-func acceptRemoteUDP(pc *peer.Conn, route Route, remote net.Conn) {
+func acceptRemoteUDP(pc *peer.Conn, route app.Route, remote net.Conn) {
 	local, err := net.DialUDP("udp", nil, &net.UDPAddr{
 		IP:   net.ParseIP(options.bindAddress),
 		Port: route.RemotePort,
@@ -134,20 +135,20 @@ func acceptRemoteUDP(pc *peer.Conn, route Route, remote net.Conn) {
 	go joinConns(local, remote)
 }
 
-func localListener(pc *peer.Conn, route Route) {
+func localListener(pc *peer.Conn, route app.Route) {
 	log.Info().Interface("route", route).Msg("starting local listener")
 
 	switch route.Type {
-	case RouteTypeTCP, "":
+	case app.RouteTypeTCP, "":
 		localTCPListener(pc, route)
-	case RouteTypeUDP:
+	case app.RouteTypeUDP:
 		localUDPListener(pc, route)
 	default:
 		log.Fatal().Str("type", string(route.Type)).Msg("invalid route type")
 	}
 }
 
-func localTCPListener(pc *peer.Conn, route Route) {
+func localTCPListener(pc *peer.Conn, route app.Route) {
 	li, err := net.Listen("tcp", net.JoinHostPort(options.bindAddress, fmt.Sprint(route.LocalPort)))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create listener")
@@ -175,7 +176,7 @@ func localTCPListener(pc *peer.Conn, route Route) {
 	}
 }
 
-func localUDPListener(pc *peer.Conn, route Route) {
+func localUDPListener(pc *peer.Conn, route app.Route) {
 	local, err := net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP(options.bindAddress),
 		Port: route.LocalPort,

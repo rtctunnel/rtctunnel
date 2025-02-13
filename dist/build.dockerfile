@@ -15,4 +15,4 @@ COPY crypt crypt
 COPY peer peer 
 COPY signal signal 
 
-RUN go build -v -o /bin/rtctunnel ./cmd/rtctunnel
+RUN go build -v -o /bin/rtctunnel ./main.go

@@ -1,4 +1,5 @@
-//+build js
+//go:build js
+// +build js
 
 package main
 
@@ -11,9 +12,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/rtctunnel/rtctunnel/crypt"
+
 	"github.com/rtctunnel/rtctunnel/ext/js/localstorage"
-	"github.com/rtctunnel/rtctunnel/peer"
+	"github.com/rtctunnel/rtctunnel/internal/crypt"
+	"github.com/rtctunnel/rtctunnel/internal/peer"
 )
 
 const (
@@ -42,7 +44,8 @@ func main() {
 
 	onload()
 
-	for range time.Tick(time.Second) {}
+	for range time.Tick(time.Second) {
+	}
 }
 
 func onload() {
@@ -113,7 +116,6 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	log.Info().Str("url", req.URL.String()).Msg("reading response")
 

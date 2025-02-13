@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"path/filepath"
@@ -15,8 +15,8 @@ var (
 		configFile  string
 		logLevel    string
 	}
-	rootCmd = &cobra.Command{
-		Use:   "rtctunnel",
+	RootCmd = &cobra.Command{
+		Use:   "",
 		Short: "RTCTunnel creates network tunnels over WebRTC",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			lvl, err := zerolog.ParseLevel(options.logLevel)
@@ -30,16 +30,21 @@ var (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&options.bindAddress, "bind-address", "127.0.0.1", "the ip address to bind")
-	rootCmd.PersistentFlags().StringVar(&options.configFile, "config-file", defaultConfigFile(), "the config file")
-	rootCmd.PersistentFlags().StringVar(&options.logLevel, "log-level", "info", "the log level to use")
+	RootCmd.AddCommand(runCmd)
+	RootCmd.AddCommand(initCmd)
+	RootCmd.AddCommand(infoCmd)
+	RootCmd.AddCommand(addRouteCmd)
+
+	RootCmd.PersistentFlags().StringVar(&options.bindAddress, "bind-address", "127.0.0.1", "the ip address to bind")
+	RootCmd.PersistentFlags().StringVar(&options.configFile, "config-file", defaultConfigFile(), "the config file")
+	RootCmd.PersistentFlags().StringVar(&options.logLevel, "log-level", "info", "the log level to use")
 }
 
 func defaultConfigFile() string {
 	dir := configdir.LocalConfig("rtctunnel")
-	err := configdir.MakePath(dir)
-	if err != nil {
+	if err := configdir.MakePath(dir); err != nil {
 		log.Fatal().Msg("failed to create config folder")
 	}
+
 	return filepath.Join(dir, "rtctunnel.yaml")
 }

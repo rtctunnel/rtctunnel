@@ -13,7 +13,7 @@ An overview of the application and how and why it was built is available here: [
 RTCTunnel can be installed via `go install`:
 
 ```bash
-go install github.com/rtctunnel/rtctunnel/cmd/rtctunnel@latest
+go install github.com/rtctunnel/rtctunnel@latest
 ```
 
 Or downloaded from the releases page (for linux).
