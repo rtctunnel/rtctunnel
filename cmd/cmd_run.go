@@ -11,12 +11,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	"github.com/rtctunnel/rtctunnel/channels"
-	_ "github.com/rtctunnel/rtctunnel/channels/operator"
 	"github.com/rtctunnel/rtctunnel/internal/app"
 	"github.com/rtctunnel/rtctunnel/internal/crypt"
 	"github.com/rtctunnel/rtctunnel/internal/peer"
 	"github.com/rtctunnel/rtctunnel/internal/signal"
+	"github.com/rtctunnel/rtctunnel/pkg/channels"
+	_ "github.com/rtctunnel/rtctunnel/pkg/channels/operator"
 )
 
 var (
@@ -45,6 +45,7 @@ var (
 				if err != nil {
 					log.Fatal().Err(err).Msg("invalid signalchannel in yaml config")
 				}
+
 				signal.SetDefaultOptions(signal.WithChannel(ch))
 			}
 

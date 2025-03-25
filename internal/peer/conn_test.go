@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/rtctunnel/rtctunnel/channels"
 	"github.com/rtctunnel/rtctunnel/internal/crypt"
 	"github.com/rtctunnel/rtctunnel/internal/signal"
+	"github.com/rtctunnel/rtctunnel/pkg/channels"
 )
 
 func TestConn(t *testing.T) {
